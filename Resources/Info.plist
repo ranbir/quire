@@ -74,7 +74,7 @@
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
-	<string>Quire text editor.</string>
+	<string>Copyright © 2026 Ranbir Mazumdar. MIT License.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Quire uses the microphone when you dictate an instruction for Edit with AI.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

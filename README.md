@@ -209,3 +209,9 @@ open -W --stdout /dev/stdout --env QUIRE_SELFTEST=1 -a build/Quire.app   # insid
 - Folding uses heuristics (brackets, indentation, tags) rather than a full parser, except for Markdown headings.
 - Inline math (`$…$`) can't continue across a line break, and `\(…\)` isn't recognised as math.
 - Markdown files over 2 MB use Styled formatting rather than Live Preview, and over 4 MB are shown as Source.
+
+## License
+
+Quire is released under the [MIT License](LICENSE). Copyright (c) 2026 Ranbir Mazumdar.
+
+It bundles cmark-gfm (BSD 2-Clause), KaTeX (MIT), Mermaid (MIT) and highlight.js (BSD 3-Clause). Their license texts are in [`Resources/Licenses`](Resources/Licenses) and [`Resources/preview`](Resources/preview), and are included inside Quire.app.
