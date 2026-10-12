@@ -1,6 +1,24 @@
 # Quire
 
-A fast, native macOS text and code editor.
+A fast, native macOS text and code editor by Ranbir Mazumdar.
+
+## Introduction
+
+Quire is a lightweight editor for the three kinds of files most people juggle every day: plain text, source code and Markdown. It is written in Swift on AppKit, so it starts instantly, follows the system's light and dark appearance, and behaves like a Mac app: window tabs, Open Recent, AppleScript and a `quire` command for the terminal.
+
+**Writing code.** Syntax colouring for over 20 languages (more can be added as JSON language modules), code folding, a symbols menu, bracket balancing, word and keyword completion, and reusable clippings with placeholders. Git changes show in the gutter, and a Git menu covers blame, history, diffs, staging and commits.
+
+**Working with text.** A large Text menu sorts, de-duplicates, wraps, re-cases and cleans up lines. Find and replace supports grep patterns with back-references and can search a whole folder. Any script in the Text Filters folder becomes a menu command that transforms the selection.
+
+**Reading Markdown.** `⌥⌘P` opens a live preview pane beside the editor. It renders Mermaid diagrams (flowcharts, sequence, class, state, ER and C4 architecture diagrams), KaTeX math and syntax-highlighted code, and updates in place as you type. Everything is bundled, so it works offline.
+
+**Projects and remote files.** Open a folder as a project with a sidebar of files and open documents, save it as a `.quireproject`, or edit files on a server over SFTP using your existing `ssh` setup.
+
+**AI editing with your own model.** Connect Anthropic, OpenAI, Gemini or any OpenAI-compatible server, including local models through Ollama or LM Studio. Select text, press `⌘K`, type or dictate an instruction, and review the result before it replaces anything. API keys stay in your Keychain.
+
+**Shell worksheets.** A `.worksheet` file runs lines in a persistent zsh session and inserts the output below them, so a document can double as a runnable notebook.
+
+To install, download the latest signed and notarized `.dmg` from [Releases](https://github.com/ranbir/quire/releases), or build it from source as described below. Quire needs macOS 13 or later and runs natively on Apple silicon and Intel.
 
 ## Build & install
 
