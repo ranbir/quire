@@ -21,8 +21,35 @@ enum Prefs {
             "showLineNumbers": true, "softWrap": true, "showInvisibles": false,
             "showPageGuide": true, "pageGuideColumn": 80, "highlightCurrentLine": true,
             "expandTabs": true, "tabWidth": 4, "fontSize": 13.0, "autoIndent": true,
-            "autoComplete": false, "gitIntegration": true,
+            "autoComplete": false, "gitIntegration": true, "appearance": Appearance.system.rawValue,
         ])
+    }
+
+    enum Appearance: String, CaseIterable {
+        case system, light, dark
+
+        var title: String {
+            switch self {
+            case .system: return "Use System Setting"
+            case .light: return "Light"
+            case .dark: return "Dark"
+            }
+        }
+
+        /// What NSApp.appearance should be; nil follows macOS.
+        var nsAppearance: NSAppearance? {
+            switch self {
+            case .system: return nil
+            case .light: return NSAppearance(named: .aqua)
+            case .dark: return NSAppearance(named: .darkAqua)
+            }
+        }
+    }
+
+    /// Light, dark or following the system. Applied app-wide, including the preview.
+    static var appearance: Appearance {
+        get { Appearance(rawValue: d.string(forKey: "appearance") ?? "") ?? .system }
+        set { set(newValue.rawValue, "appearance"); NSApp.appearance = newValue.nsAppearance }
     }
 
     private static func set(_ v: Any, _ key: String) {

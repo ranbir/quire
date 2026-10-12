@@ -75,6 +75,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     private let infoLabel = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
     private let previewButton = NSButton()
+    private let appearanceButton = NSButton()
     private let languagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let encodingPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let lineEndingPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -204,6 +205,13 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         previewButton.target = self
         previewButton.action = #selector(togglePreview(_:))
 
+        appearanceButton.bezelStyle = .inline
+        appearanceButton.isBordered = false
+        appearanceButton.image = NSImage(systemSymbolName: "circle.lefthalf.filled", accessibilityDescription: "Switch Light/Dark")
+        appearanceButton.imagePosition = .imageOnly
+        appearanceButton.toolTip = "Switch light/dark (⌥⌘T). View ▸ Appearance ▸ Use System Setting follows macOS again."
+        appearanceButton.action = #selector(AppDelegate.toggleAppearance(_:))
+
         rebuildLanguagePopup()
         languagePopup.action = #selector(languagePopupChanged(_:))
         languagePopup.toolTip = "Language"
@@ -223,7 +231,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         lineEndingPopup.toolTip = "Line breaks used when saving"
 
         let left = NSStackView(views: [symbolPopup, positionLabel, spinner, infoLabel])
-        let right = NSStackView(views: [previewButton, languagePopup, encodingPopup, lineEndingPopup])
+        let right = NSStackView(views: [appearanceButton, previewButton, languagePopup, encodingPopup, lineEndingPopup])
         for s in [left, right] { s.spacing = 12; s.translatesAutoresizingMaskIntoConstraints = false; bar.addSubview(s) }
 
         splitView.isVertical = true

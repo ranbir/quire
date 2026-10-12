@@ -306,6 +306,39 @@ enum SelfTest {
         check("preview pane hides", mdoc.editor.preview == nil && pane?.superview == nil)
         mdoc.close()
 
+        // Appearance: Light / Dark / System, applied to the editor and the preview
+        if let app = NSApp.delegate as? AppDelegate {
+            let saved = Prefs.appearance
+            let (adoc, _) = try makeEditor("# Theme\n", "appearance-test.md")
+            adoc.editor.showPreview(nil)
+            func previewBrightness() -> CGFloat? {
+                var html = "", asking = false
+                Self.wait(10) {
+                    if !asking { asking = true; adoc.editor.preview?.whenRendered { html = $0 ?? ""; asking = false } }
+                    return html.contains("Theme")
+                }
+                var image: NSImage?, done = false
+                adoc.editor.preview?.snapshot { image = $0; done = true }
+                Self.wait(5) { done }
+                guard let rep = image?.tiffRepresentation.flatMap(NSBitmapImageRep.init(data:)),
+                      let c = rep.colorAt(x: 4, y: rep.pixelsHigh - 4)?.usingColorSpace(.sRGB) else { return nil }
+                return (c.redComponent + c.greenComponent + c.blueComponent) / 3
+            }
+            func editorIsDark() -> Bool { adoc.editor.textView.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
+
+            Prefs.appearance = .dark
+            check("dark appearance reaches the editor", editorIsDark())
+            check("dark appearance reaches the preview", (previewBrightness() ?? 1) < 0.3)
+            app.toggleAppearance(nil)
+            check("switch light/dark flips to light", Prefs.appearance == .light && !editorIsDark())
+            check("light appearance reaches the preview", (previewBrightness() ?? 0) > 0.8)
+            Prefs.appearance = .system
+            check("system setting follows macOS", NSApp.appearance == nil)
+            Prefs.appearance = saved
+            adoc.editor.hidePreview()
+            adoc.close()
+        }
+
         // File ▸ Open Path: escaped spaces and a line:column suffix
         if let app = NSApp.delegate as? AppDelegate {
             let dir = fm.temporaryDirectory.appendingPathComponent("quire open path")

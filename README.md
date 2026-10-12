@@ -4,7 +4,7 @@ A fast, native macOS text and code editor by Ranbir Mazumdar.
 
 ## Introduction
 
-Quire is a lightweight editor for the three kinds of files most people juggle every day: plain text, source code and Markdown. It is written in Swift on AppKit, so it starts instantly, follows the system's light and dark appearance, and behaves like a Mac app: window tabs, Open Recent, AppleScript and a `quire` command for the terminal.
+Quire is a lightweight editor for the three kinds of files most people juggle every day: plain text, source code and Markdown. It is written in Swift on AppKit, so it starts instantly, follows the system's light and dark appearance (or stays light or dark if you prefer), and behaves like a Mac app: window tabs, Open Recent, AppleScript and a `quire` command for the terminal.
 
 **Writing code.** Syntax colouring for over 20 languages (more can be added as JSON language modules), code folding, a symbols menu, bracket balancing, word and keyword completion, and reusable clippings with placeholders. Git changes show in the gutter, and a Git menu covers blame, history, diffs, staging and commits.
 
@@ -81,7 +81,7 @@ Requires macOS 13+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
 | Area | What you get |
 |---|---|
 | Documents | **File ▸ Open Path…** (`⌥⌘O`) opens a file or folder from a pasted path (a path already on the clipboard is filled in, so `⌥⌘O` then Return opens it; quotes, `~`, Terminal-escaped spaces, `file://` URLs and `path:line:column` all work). Window tabs, Open Recent, LF/CRLF/CR preserved on save, encoding detection (UTF-8/16 with or without BOM, Latin-1, Mac Roman, CP1252, Shift JIS…), changeable from the status bar, silent reload when the file changes on disk |
-| Editor | Line-number gutter (click/drag to select lines), soft wrap, page guide, current-line highlight, show invisibles, auto-indent, auto-expand tabs, close-bracket outdent |
+| Editor | Light or dark appearance, following macOS by default: choose **View ▸ Appearance ▸ Use System Setting / Light / Dark**, or switch with `⌥⌘T` or the half-filled circle in the status bar (the preview follows too). Line-number gutter (click/drag to select lines), soft wrap, page guide, current-line highlight, show invisibles, auto-indent, auto-expand tabs, close-bracket outdent |
 | Syntax colouring | Swift, C, C++, Objective-C, JavaScript, TypeScript, Python, Ruby, Shell, Go, Rust, Java/Kotlin, PHP, SQL, HTML, XML, CSS, Markdown, JSON, YAML, INI/TOML, Makefile. Detected from file extension, file name or `#!` line. Light and dark themes |
 | Navigation | Symbols popup (functions, classes, headings), Go to Line (`⌘J`, accepts `line:col`), Balance brackets (`⌘B`) |
 | Search | Find/replace with grep mode (`\1` back-references, `&` for the whole match), case/whole-word/wrap/selection-only options, Find All results window, multi-file search over a folder with file filters (`*.swift, *.m`), skipping `.git`, `node_modules`, binaries |

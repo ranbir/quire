@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         Prefs.register()
+        NSApp.appearance = Prefs.appearance.nsAppearance
         moduleErrors = LanguageModulesLibrary.reload()
         NSApp.mainMenu = buildMainMenu()
         NSWindow.allowsAutomaticWindowTabbing = true
@@ -256,6 +257,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item("Show Invisibles", #selector(toggleInvisibles(_:)), "i", [.command, .option, .shift], target: self),
             item("Show Page Guide", #selector(togglePageGuide(_:)), target: self),
             item("Highlight Current Line", #selector(toggleCurrentLine(_:)), target: self),
+            sep(),
+            submenu("Appearance", Prefs.Appearance.allCases.enumerated().map { index, appearance in
+                let i = item(appearance.title, #selector(setAppearance(_:)), target: self); i.tag = index; return i
+            } + [sep(), item("Switch Light/Dark", #selector(toggleAppearance(_:)), "t", [.command, .option], target: self)]),
             sep(),
             submenu("Folding", [
                 item("Fold Selection", #selector(EditorViewController.foldSelection(_:)), left, [.command, .option]),
@@ -684,6 +689,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Prefs.fontSize = 13
     }
 
+    @objc func setAppearance(_ sender: NSMenuItem) {
+        Prefs.appearance = Prefs.Appearance.allCases[sender.tag]
+    }
+
+    /// Flips between light and dark, starting from whatever is showing now.
+    @objc func toggleAppearance(_ sender: Any?) {
+        let isDark = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        Prefs.appearance = isDark ? .light : .dark
+    }
+
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         let on: Bool?
         switch item.action {
@@ -698,6 +713,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case #selector(toggleGitIntegration(_:)): on = Prefs.gitIntegration
         case #selector(setTabWidth(_:)): on = Prefs.tabWidth == item.tag
         case #selector(setGuideColumn(_:)): on = Prefs.pageGuideColumn == item.tag
+        case #selector(setAppearance(_:)): on = Prefs.Appearance.allCases.firstIndex(of: Prefs.appearance) == item.tag
         default: on = nil
         }
         if let on { item.state = on ? .on : .off }
