@@ -99,6 +99,13 @@ public struct Symbol: Equatable {
 
 public enum SymbolScanner {
     public static func symbols(in text: String, language: Language) -> [Symbol] {
+        if language.name == "Markdown" {
+            // Parsed headings, indented by level.
+            let index = LineIndex(text)
+            return MarkdownDocument(text).headings.map { h in
+                Symbol(name: String(repeating: "  ", count: h.level - 1) + h.text, location: h.range.location, line: index.line(for: h.range.location) + 1)
+            }
+        }
         guard !language.symbolPatterns.isEmpty else { return [] }
         let ns = text as NSString
         let index = LineIndex(text)

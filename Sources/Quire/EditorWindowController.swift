@@ -69,12 +69,26 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     let folds = FoldManager()
     private(set) var ruler: LineNumberRulerView!
     private var highlighter: SyntaxHighlighter!
+    private(set) lazy var markdownStyler: MarkdownStyler = {
+        let styler = MarkdownStyler(textView: textView)
+        styler.baseURL = { [weak self] in self?.doc?.fileURL?.deletingLastPathComponent() }
+        return styler
+    }()
+    /// How this editor shows Markdown; starts from the app-wide default.
+    var markdownMode: Prefs.MarkdownMode = Prefs.markdownMode {
+        didSet { if markdownMode != oldValue { updateMarkdownStyling() } }
+    }
+    /// True when Markdown is being formatted in the editor (Styled or Live Preview).
+    var isStyledMarkdown: Bool {
+        isMarkdown && markdownMode != .source && (textView.textStorage?.length ?? 0) <= MarkdownStyler.maxLength
+    }
 
     private let symbolPopup = NSPopUpButton(frame: .zero, pullsDown: true)
     private let positionLabel = NSTextField(labelWithString: "")
     private let infoLabel = NSTextField(labelWithString: "")
     private let spinner = NSProgressIndicator()
     private let previewButton = NSButton()
+    private let markdownModePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let appearanceButton = NSButton()
     private let languagePopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private let encodingPopup = NSPopUpButton(frame: .zero, pullsDown: false)
@@ -88,6 +102,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     private var gitHead: String?
     private var gitBranch: String?
     private var worksheetInsertion: Int?
+    /// Words in a Markdown document's readable text, for the status bar.
+    private(set) var markdownWordCount: Int?
 
     init(document: Document) {
         self.doc = document
@@ -102,6 +118,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         layoutManager.foldManager = folds
         folds.layoutManager = layoutManager
         textView.foldManager = folds
+        textView.linkResolver = { [weak self] index in
+            guard let self, self.isStyledMarkdown else { return nil }
+            return self.markdownStyler.linkURL(at: index, base: self.doc?.fileURL?.deletingLastPathComponent())
+        }
         folds.onChange = { [weak self] in
             self?.textView.needsDisplay = true
             self?.ruler?.needsDisplay = true
@@ -167,6 +187,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         scrollView.contentView.postsBoundsChangedNotifications = true
         observers.append(NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main) { [weak self] _ in
             self?.ruler.needsDisplay = true
+            self?.preview?.editorDidScroll()
         })
 
         highlighter = SyntaxHighlighter(textView: textView, language: Languages.plainText)
@@ -177,7 +198,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let divider = NSBox(); divider.boxType = .separator
         divider.translatesAutoresizingMaskIntoConstraints = false
 
-        for p in [symbolPopup, languagePopup, encodingPopup, lineEndingPopup] {
+        for p in [symbolPopup, markdownModePopup, languagePopup, encodingPopup, lineEndingPopup] {
             p.controlSize = .small
             p.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
             p.isBordered = false
@@ -229,9 +250,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         }
         lineEndingPopup.action = #selector(lineEndingPopupChanged(_:))
         lineEndingPopup.toolTip = "Line breaks used when saving"
+        markdownModePopup.addItems(withTitles: Prefs.MarkdownMode.allCases.map(\.title))
+        markdownModePopup.target = self
+        markdownModePopup.action = #selector(setMarkdownMode(_:))
+        markdownModePopup.toolTip = "How Markdown is shown: plain source, styled with dimmed markers, or live preview"
+        markdownModePopup.isHidden = true
 
         let left = NSStackView(views: [symbolPopup, positionLabel, spinner, infoLabel])
-        let right = NSStackView(views: [appearanceButton, previewButton, languagePopup, encodingPopup, lineEndingPopup])
+        let right = NSStackView(views: [appearanceButton, markdownModePopup, previewButton, languagePopup, encodingPopup, lineEndingPopup])
         for s in [left, right] { s.spacing = 12; s.translatesAutoresizingMaskIntoConstraints = false; bar.addSubview(s) }
 
         splitView.isVertical = true
@@ -262,7 +288,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             right.leadingAnchor.constraint(greaterThanOrEqualTo: left.trailingAnchor, constant: 8),
         ])
         left.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        symbolPopup.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        // The word count and Git info give way first, then the Symbols menu.
+        symbolPopup.setContentCompressionResistancePriority(NSLayoutConstraint.Priority(700), for: .horizontal)
     }
 
     private func rebuildLanguagePopup() {
@@ -300,6 +327,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.language = lang
         languagePopup.selectItem(withTitle: lang.name)
         highlighter?.setLanguage(lang)
+        updateMarkdownStyling()
         scheduleAnalysis(immediately: true)
         previewButton.isHidden = !["Markdown", "HTML"].contains(lang.name)
         preview?.scheduleUpdate()
@@ -344,6 +372,8 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             storage.endEditing()
         }
 
+        if isStyledMarkdown { markdownStyler.restyleAll() }
+        preview?.scheduleUpdate()
         layoutManager.showInvisibles = Prefs.showInvisibles
         setSoftWrap(Prefs.softWrap)
         scrollView.rulersVisible = Prefs.showLineNumbers
@@ -366,6 +396,44 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         }
     }
 
+    /// Recomputes folds, Git markers and the word count now (for tests).
+    func updateInfoForTests() { scheduleAnalysis(immediately: true) }
+
+    // MARK: Markdown formatting
+
+    /// Switches between syntax colouring and in-editor Markdown formatting.
+    func updateMarkdownStyling() {
+        guard isViewLoaded, highlighter != nil else { return }
+        markdownModePopup.isHidden = !isMarkdown
+        markdownModePopup.selectItem(at: Prefs.MarkdownMode.allCases.firstIndex(of: markdownMode) ?? 0)
+        if isStyledMarkdown {
+            highlighter.isEnabled = false
+            // Very large files get Styled formatting instead of Live Preview.
+            markdownStyler.live = markdownMode == .live && (textView.textStorage?.length ?? 0) <= MarkdownStyler.liveMaxLength
+            markdownStyler.restyleAll()
+        } else if markdownStyler.spans.isEmpty == false || !highlighter.isEnabled {
+            markdownStyler.remove()
+            resetTextAttributes()
+            highlighter.isEnabled = true
+        }
+    }
+
+    /// The editor font and default paragraph style over the whole text.
+    private func resetTextAttributes() {
+        guard let storage = textView.textStorage, storage.length > 0 else { return }
+        storage.beginEditing()
+        storage.addAttributes([.font: Prefs.font, .paragraphStyle: textView.defaultParagraphStyle ?? .default],
+                              range: NSRange(location: 0, length: storage.length))
+        storage.endEditing()
+    }
+
+    @objc func setMarkdownMode(_ sender: Any?) {
+        let index = (sender as? NSMenuItem)?.tag ?? (sender as? NSPopUpButton)?.indexOfSelectedItem ?? 0
+        guard Prefs.MarkdownMode.allCases.indices.contains(index) else { return }
+        markdownMode = Prefs.MarkdownMode.allCases[index]
+        Prefs.markdownMode = markdownMode
+    }
+
     // MARK: Text view & storage delegates
 
     func undoManager(for view: NSTextView) -> UndoManager? { doc?.undoManager }
@@ -373,13 +441,14 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     func textStorage(_ textStorage: NSTextStorage, didProcessEditing editedMask: NSTextStorageEditActions, range editedRange: NSRange, changeInLength delta: Int) {
         guard editedMask.contains(.editedCharacters) else { return }
         folds.textEdited(range: editedRange, delta: delta)
+        if isStyledMarkdown { markdownStyler.noteEdit(range: editedRange, delta: delta) }
         if let ins = worksheetInsertion, editedRange.location < ins {
             worksheetInsertion = max(editedRange.location, ins + delta)
         }
     }
 
     func textDidChange(_ notification: Notification) {
-        highlighter.scheduleHighlight()
+        if isStyledMarkdown { markdownStyler.schedule() } else { highlighter.scheduleHighlight() }
         ruler.textDidChange()
         updatePosition()
         scheduleAnalysis()
@@ -387,7 +456,12 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         textView.textDidChangeForCompletion()
     }
 
-    func textViewDidChangeSelection(_ notification: Notification) { updatePosition() }
+    func textViewDidChangeSelection(_ notification: Notification) {
+        updatePosition()
+        if isStyledMarkdown, markdownStyler.live, !markdownStyler.hasPendingEdits {
+            markdownStyler.updateLive(selection: textView.selectedRange())
+        }
+    }
 
     func textView(_ textView: NSTextView, completions words: [String], forPartialWordRange charRange: NSRange, indexOfSelectedItem index: UnsafeMutablePointer<Int>?) -> [String] {
         let prefix = (textView.string as NSString).substring(with: charRange)
@@ -415,6 +489,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
             parts.append("$ " + (dir.path as NSString).abbreviatingWithTildeInPath)
         }
         if let remote = doc?.remote { parts.append("☁︎ \(remote.destination)") }
+        if isMarkdown, let words = markdownWordCount {
+            let minutes = max(1, Int((Double(words) / 230).rounded()))
+            parts.append("\(words.formatted()) word\(words == 1 ? "" : "s") · \(minutes) min read")
+        }
         infoLabel.stringValue = parts.joined(separator: "   ")
     }
 
@@ -437,8 +515,10 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let available = FoldScanner.folds(in: text, language: lang)
             let markers = head.map { LineDiff.changeMarkers(old: $0, new: text) } ?? [:]
+            let words = lang.name == "Markdown" ? MarkdownDocument(text).wordCount : nil
             DispatchQueue.main.async {
                 guard let self, gen == self.analysisGeneration else { return }
+                if self.markdownWordCount != words { self.markdownWordCount = words; self.updateInfo() }
                 self.folds.available = available
                 self.ruler.gitMarkers = markers
                 self.ruler.needsDisplay = true
@@ -610,7 +690,6 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     @objc func saveDocument(_ sender: Any?) { doc?.save(sender) }
     @objc func saveDocumentAs(_ sender: Any?) { doc?.saveAs(sender) }
     @objc func revertDocumentToSaved(_ sender: Any?) { doc?.revertToSaved(sender) }
-    @objc func printDocument(_ sender: Any?) { doc?.printDocument(sender) }
     @objc func runPageLayout(_ sender: Any?) { doc?.runPageLayout(sender) }
 
     // MARK: Status bar actions
@@ -692,6 +771,16 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         case #selector(saveDocument(_:)), #selector(saveDocumentAs(_:)), #selector(revertDocumentToSaved(_:)),
              #selector(printDocument(_:)), #selector(runPageLayout(_:)):
             return doc?.validateUserInterfaceItem(item) ?? false
+        case #selector(exportHTML(_:)), #selector(exportPDF(_:)), #selector(copyAsRichText(_:)), #selector(printSource(_:)):
+            return isMarkdown
+        case #selector(toggleSmartPunctuation(_:)):
+            item.state = Prefs.smartPunctuation ? .on : .off
+            return true
+        case #selector(chooseImagesFolder(_:)):
+            return isMarkdown
+        case #selector(setMarkdownMode(_:)):
+            item.state = isMarkdown && item.tag == Prefs.MarkdownMode.allCases.firstIndex(of: markdownMode) ? .on : .off
+            return isMarkdown
         case #selector(togglePreview(_:)):
             item.title = preview == nil ? "Show Preview" : "Hide Preview"
             return true

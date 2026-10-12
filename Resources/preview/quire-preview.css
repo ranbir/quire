@@ -36,3 +36,34 @@ figure.diagram .edgeLabel, figure.diagram .edgeLabel rect { font-size: 12px; }
 figure.diagram-error { text-align: left; border-color: #d1242f80; }
 .diagram-error-message { color: #d1242f; font-size: 13px; margin-bottom: 10px; white-space: pre-wrap; }
 figure.diagram-error pre { margin: 0; font: 0.88em/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* GitHub alerts: > [!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION] */
+.markdown-alert { --alert: #0969da; margin: 1em 0; padding: .5em 1em; border-left: 4px solid var(--alert); }
+.markdown-alert > :last-child { margin-bottom: 0; }
+.markdown-alert-title { margin: 0 0 .4em; font-weight: 600; color: var(--alert); }
+.markdown-alert-tip { --alert: #1a7f37; }
+.markdown-alert-important { --alert: #8250df; }
+.markdown-alert-warning { --alert: #9a6700; }
+.markdown-alert-caution { --alert: #cf222e; }
+@media (prefers-color-scheme: dark) {
+    .markdown-alert-note { --alert: #4493f8; }
+    .markdown-alert-tip { --alert: #3fb950; }
+    .markdown-alert-important { --alert: #ab7df8; }
+    .markdown-alert-warning { --alert: #d29922; }
+    .markdown-alert-caution { --alert: #f85149; }
+}
+
+/* Front matter */
+table.front-matter { font-size: .85em; color: var(--muted); margin: 0 0 1.6em; }
+table.front-matter th { text-align: left; font-weight: 500; background: transparent; }
+table.front-matter th, table.front-matter td { border: 0; border-bottom: 1px solid var(--border); padding: 3px 14px 3px 0; }
+
+/* Footnotes */
+.footnote-ref a { font-size: .8em; }
+section.footnotes { margin-top: 2.5em; padding-top: 1em; border-top: 1px solid var(--border); font-size: .9em; color: var(--muted); }
+section.footnotes p { margin: .3em 0; }
+.footnote-backref { text-decoration: none; }
+
+/* Task lists */
+li:has(> input[type=checkbox]) { list-style: none; }
+li > input[type=checkbox] { margin: 0 .4em 0 -1.3em; vertical-align: middle; }

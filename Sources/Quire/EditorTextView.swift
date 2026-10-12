@@ -11,13 +11,15 @@ final class EditorTextView: NSTextView {
     var highlightCurrentLine = true
     var autoComplete = false
     weak var foldManager: FoldManager?
+    /// The Markdown link URL at a character index (for ⌘-click); set by the editor.
+    var linkResolver: ((Int) -> URL?)?
     private var completionWork: DispatchWorkItem?
 
     var indentUnit: String { expandTabs ? String(repeating: " ", count: tabWidth) : "\t" }
     private var ns: NSString { string as NSString }
 
     var charWidth: CGFloat {
-        (" " as NSString).size(withAttributes: [.font: font ?? Prefs.font]).width
+        (" " as NSString).size(withAttributes: [.font: Prefs.font]).width
     }
 
     // MARK: Drawing
@@ -68,6 +70,7 @@ final class EditorTextView: NSTextView {
     // MARK: Mouse
 
     override func mouseDown(with event: NSEvent) {
+        if handleMarkdownClick(event) { return }
         // Clicking a fold capsule opens the fold.
         if let fm = foldManager, !fm.folded.isEmpty, let lm = layoutManager as? InvisiblesLayoutManager {
             var p = convert(event.locationInWindow, from: nil)
@@ -131,6 +134,7 @@ final class EditorTextView: NSTextView {
     // MARK: Typing behaviour
 
     override func insertTab(_ sender: Any?) {
+        if markdownTableTab(backward: false) || markdownIndentListItem(outdent: false) { return }
         if selectedRange().length > 0 && ns.substring(with: selectedRange()).contains("\n") {
             shiftRight(sender); return
         }
@@ -141,9 +145,13 @@ final class EditorTextView: NSTextView {
         insertText(String(repeating: " ", count: tabWidth - col % tabWidth), replacementRange: selectedRange())
     }
 
-    override func insertBacktab(_ sender: Any?) { shiftLeft(sender) }
+    override func insertBacktab(_ sender: Any?) {
+        if markdownTableTab(backward: true) || markdownIndentListItem(outdent: true) { return }
+        shiftLeft(sender)
+    }
 
     override func insertNewline(_ sender: Any?) {
+        if markdownNewline() { return }
         guard autoIndent else { super.insertNewline(sender); return }
         let sel = selectedRange()
         let lineStart = ns.lineRange(for: NSRange(location: sel.location, length: 0)).location
@@ -156,6 +164,7 @@ final class EditorTextView: NSTextView {
     }
 
     override func insertText(_ string: Any, replacementRange: NSRange) {
+        if let s = string as? String, markdownWrapSelection(typing: s) { return }
         // Close-brace outdent: typing "}" on a whitespace-only line.
         if autoIndent, let s = string as? String, s == "}" || s == "]" || s == ")" {
             let sel = selectedRange()
@@ -439,12 +448,22 @@ final class EditorTextView: NSTextView {
     /// The Font panel sets the editor-wide font rather than styling a range.
     override func changeFont(_ sender: Any?) {
         guard let fm = sender as? NSFontManager else { return }
-        Prefs.setFont(fm.convert(font ?? Prefs.font))
+        Prefs.setFont(fm.convert(Prefs.font))
     }
 
     override func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(toggleComment(_:)): return language.lineComment != nil || language.blockComment != nil
+        case #selector(balance(_:)):
+            // In Markdown, ⌘B is Bold and Balance moves to ⌃⌘B.
+            item.keyEquivalentModifierMask = isMarkdown ? [.command, .control] : .command
+            return super.validateMenuItem(item)
+        case #selector(toggleBold(_:)):
+            item.keyEquivalent = isMarkdown ? "b" : ""
+            return isMarkdown
+        case #selector(toggleItalic(_:)), #selector(toggleInlineCode(_:)), #selector(toggleStrikethrough(_:)),
+             #selector(insertMarkdownLink(_:)), #selector(setHeadingLevel(_:)), #selector(renumberList(_:)):
+            return isMarkdown
         default: return super.validateMenuItem(item)
         }
     }

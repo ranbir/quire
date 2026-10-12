@@ -26,6 +26,7 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp README.md "$APP/Contents/Resources/README.md"
 cp Resources/Quire.sdef "$APP/Contents/Resources/Quire.sdef"
 cp -R Resources/preview "$APP/Contents/Resources/preview"
+cp -R Resources/Licenses "$APP/Contents/Resources/Licenses"
 cp bin/quire "$APP/Contents/SharedSupport/bin/quire"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 

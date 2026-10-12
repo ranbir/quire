@@ -1,3 +1,8 @@
+---
+title: Preview sample
+author: Ranbir Mazumdar
+---
+
 # Preview sample
 
 A tour of what the live preview (`⌥⌘P`) renders: **diagrams**, *math* and highlighted code.
@@ -66,3 +71,17 @@ def fib(n: int) -> int:
 | Code | highlight.js | always |
 | Math | KaTeX | when the page has math |
 | Diagrams | Mermaid | when the page has diagrams |
+
+## GitHub extras
+
+> [!NOTE]
+> Alerts render as call-outs: `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` and `[!CAUTION]`.
+
+> [!WARNING]
+> The front matter above shows as a small table at the top of the preview.
+
+- [x] Task lists
+- [ ] ~~Strikethrough~~ and bare links like https://commonmark.org
+- [ ] Footnotes[^spec]
+
+[^spec]: Quire passes all 670 examples of the GitHub Flavored Markdown spec.

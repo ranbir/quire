@@ -106,12 +106,8 @@
         },
     };
 
-    async function renderDiagrams(root, gen) {
-        const blocks = root.querySelectorAll("pre.mermaid");
-        if (!blocks.length) return;
-        try { await load("mermaid/mermaid.min.js"); } catch (e) { return; }
-        const theme = mermaidTheme();
-        mermaid.initialize({
+    function mermaidConfig(theme) {
+        return {
             startOnLoad: false,
             securityLevel: "strict",
             theme: "base",
@@ -121,7 +117,18 @@
             }, diagramPalettes[theme]),
             flowchart: { curve: "basis", padding: 14 },
             sequence: { useMaxWidth: true, mirrorActors: false },
-        });
+        };
+    }
+    // The editor's diagram widgets use the same look.
+    window.quireMermaidConfig = mermaidConfig;
+    window.quireLoad = load;
+
+    async function renderDiagrams(root, gen) {
+        const blocks = root.querySelectorAll("pre.mermaid");
+        if (!blocks.length) return;
+        try { await load("mermaid/mermaid.min.js"); } catch (e) { return; }
+        const theme = mermaidTheme();
+        mermaid.initialize(mermaidConfig(theme));
         for (const pre of blocks) {
             if (gen !== generation) return;   // a newer update replaced the page
             const source = pre.textContent;
@@ -129,6 +136,7 @@
             const figure = document.createElement("figure");
             figure.className = "diagram";
             figure.dataset.source = source;
+            if (pre.dataset.sourcepos) figure.dataset.sourcepos = pre.dataset.sourcepos;
             let svg = diagramCache.get(key);
             if (!svg) {
                 const id = "quire-diagram-" + (++diagramSeq);
@@ -160,10 +168,87 @@
             const pre = document.createElement("pre");
             pre.className = "mermaid";
             pre.textContent = fig.dataset.source;
+            if (fig.dataset.sourcepos) pre.dataset.sourcepos = fig.dataset.sourcepos;
             fig.replaceWith(pre);
         }
         renderDiagrams(document.body, ++generation);
     });
+
+    // MARK: Scroll sync
+
+    // Scrolls so the block covering source line `line` (fractional: 12.5 is halfway through
+    // line 12) is at the top, interpolating between blocks by their line ranges.
+    // Innermost blocks with their source lines and positions, top to bottom.
+    function sourceBlocks() {
+        const blocks = [];
+        for (const el of document.body.querySelectorAll("[data-sourcepos]")) {
+            // Innermost blocks only (paragraphs, headings, code, cells…); inline math has positions too.
+            if (el.tagName === "SPAN" || el.querySelector("[data-sourcepos]:not(span)")) continue;
+            const m = /^(\d+):\d+-(\d+):\d+$/.exec(el.dataset.sourcepos);
+            if (!m) continue;
+            const top = el.getBoundingClientRect().top + window.scrollY;
+            blocks.push({ start: +m[1], end: +m[2] + 1, top: top, bottom: top + el.offsetHeight });
+        }
+        return blocks;
+    }
+
+    let syncedAt = 0;   // when the app last scrolled us, so that scroll isn't echoed back
+
+    // Scrolls so the block covering source line `line` (fractional: 12.5 is halfway through
+    // line 12) is at the top, interpolating between blocks by their line ranges.
+    window.quireScrollToLine = function (line, atEnd) {
+        syncedAt = Date.now();
+        if (atEnd) { window.scrollTo(0, document.documentElement.scrollHeight); return; }
+        const blocks = sourceBlocks();
+        if (!blocks.length || line < blocks[0].start) { window.scrollTo(0, 0); return; }
+        let target = 0;
+        for (let i = 0; i < blocks.length; i++) {
+            const b = blocks[i];
+            if (line < b.start) {
+                // Between blocks: slide from the end of the previous block to the start of this one.
+                const prev = blocks[i - 1];
+                const f = (line - prev.end) / Math.max(b.start - prev.end, 1);
+                target = prev.bottom + (b.top - prev.bottom) * Math.min(Math.max(f, 0), 1);
+                break;
+            }
+            if (line < b.end) {
+                target = b.top + (b.bottom - b.top) * (line - b.start) / Math.max(b.end - b.start, 1);
+                break;
+            }
+            target = b.bottom;
+        }
+        window.scrollTo(0, Math.max(0, target - 12));
+    };
+
+    // The source line at the top of the preview (the inverse of quireScrollToLine).
+    function lineAtTop() {
+        const y = window.scrollY + 12;
+        const blocks = sourceBlocks();
+        if (!blocks.length || y <= blocks[0].top) return 1;
+        for (let i = 0; i < blocks.length; i++) {
+            const b = blocks[i];
+            if (y < b.top) {
+                const prev = blocks[i - 1];
+                const f = (y - prev.bottom) / Math.max(b.top - prev.bottom, 1);
+                return prev.end + (b.start - prev.end) * Math.min(Math.max(f, 0), 1);
+            }
+            if (y < b.bottom) return b.start + (b.end - b.start) * (y - b.top) / Math.max(b.bottom - b.top, 1);
+        }
+        return blocks[blocks.length - 1].end;
+    }
+
+    // When the reader scrolls the preview, the editor follows.
+    let scrollQueued = false;
+    window.addEventListener("scroll", () => {
+        if (Date.now() - syncedAt < 250 || scrollQueued || !window.webkit?.messageHandlers?.quireScroll) return;
+        scrollQueued = true;
+        // A timer rather than requestAnimationFrame, which stops while the window is covered.
+        setTimeout(() => {
+            scrollQueued = false;
+            const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+            window.webkit.messageHandlers.quireScroll.postMessage({ line: lineAtTop(), atEnd: atEnd });
+        }, 16);
+    }, { passive: true });
 
     // MARK: Entry points
 

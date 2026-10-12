@@ -100,24 +100,21 @@ public enum FoldScanner {
 
     // MARK: Markdown headings
 
+    /// A fold per heading, down to the next heading of the same or a higher level. Headings
+    /// come from the Markdown parser, so `#` lines in code blocks don't count and setext
+    /// headings do.
     static func headingFolds(_ text: String, _ index: LineIndex) -> [FoldRange] {
         let ns = text as NSString
-        var headings: [(line: Int, level: Int)] = []
-        var inFence = false
-        for l in 0..<index.lineCount {
-            let s = ns.substring(with: index.range(ofLine: l))
-            if s.hasPrefix("```") || s.hasPrefix("~~~") { inFence.toggle(); continue }
-            guard !inFence, s.hasPrefix("#") else { continue }
-            let level = s.prefix { $0 == "#" }.count
-            if level <= 6, s.dropFirst(level).first == " " { headings.append((l, level)) }
+        let headings = MarkdownDocument(text).headings.map { h in
+            (line: index.line(for: h.range.location), lastLine: index.line(for: max(h.range.location, NSMaxRange(h.range) - 1)), level: h.level)
         }
         var folds: [FoldRange] = []
         for (i, h) in headings.enumerated() {
             var endLine = index.lineCount - 1
             if let next = headings[(i + 1)...].first(where: { $0.level <= h.level }) { endLine = next.line - 1 }
-            while endLine > h.line, ns.substring(with: index.range(ofLine: endLine)).trimmingCharacters(in: .whitespaces).isEmpty { endLine -= 1 }
-            if endLine > h.line {
-                let start = NSMaxRange(index.range(ofLine: h.line))
+            while endLine > h.lastLine, ns.substring(with: index.range(ofLine: endLine)).trimmingCharacters(in: .whitespaces).isEmpty { endLine -= 1 }
+            if endLine > h.lastLine {
+                let start = NSMaxRange(index.range(ofLine: h.lastLine))
                 folds.append(FoldRange(range: NSRange(location: start, length: NSMaxRange(index.range(ofLine: endLine)) - start), line: h.line))
             }
         }
