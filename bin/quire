@@ -1,0 +1,21 @@
+#!/bin/sh
+# quire — open files or folders in Quire.
+#   quire file.txt other.swift     open files (created if missing)
+#   quire .                        open a folder browser
+#   some-command | quire           open piped text in a new document
+#   quire -                        same, reading stdin explicitly
+
+if [ "$1" = "-" ] || { [ $# -eq 0 ] && [ ! -t 0 ]; }; then
+    tmp="$(mktemp -t quire).txt"
+    cat > "$tmp"
+    exec open -a Quire "$tmp"
+fi
+
+if [ $# -eq 0 ]; then
+    exec open -a Quire
+fi
+
+for f in "$@"; do
+    [ -e "$f" ] || touch "$f"
+done
+exec open -a Quire "$@"

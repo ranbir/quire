@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE dictionary SYSTEM "file://localhost/System/Library/DTDs/sdef.dtd">
+<dictionary title="Quire Terminology" xmlns:xi="http://www.w3.org/2003/XInclude">
+    <xi:include href="file:///System/Library/ScriptingDefinitions/CocoaStandard.sdef" xpointer="xpointer(/dictionary/suite)"/>
+
+    <suite name="Quire Suite" code="Quir" description="Text editing in Quire.">
+
+        <class-extension extends="document" description="A Quire text document.">
+            <property name="text" code="ctxt" type="text" description="The document’s entire text.">
+                <cocoa key="scriptContents"/>
+            </property>
+            <property name="selected text" code="QSel" type="text" description="The selected text. Setting it replaces the selection.">
+                <cocoa key="scriptSelection"/>
+            </property>
+            <property name="source language" code="QLng" type="text" description="The syntax-colouring language, e.g. “Swift”.">
+                <cocoa key="scriptLanguage"/>
+            </property>
+            <property name="line count" code="QLnC" type="integer" access="r" description="Number of lines.">
+                <cocoa key="scriptLineCount"/>
+            </property>
+            <property name="posix path" code="QPth" type="text" access="r" description="The file’s POSIX path, if saved.">
+                <cocoa key="scriptPath"/>
+            </property>
+        </class-extension>
+
+        <command name="replace" code="QuirRepl" description="Replace every occurrence of a string or grep pattern. Returns the number of replacements.">
+            <cocoa class="QuireReplaceCommand"/>
+            <direct-parameter type="text" description="Text or pattern to find."/>
+            <parameter name="with" code="Rwth" type="text" description="Replacement (grep: \1 for groups, &amp; for the match).">
+                <cocoa key="replacement"/>
+            </parameter>
+            <parameter name="in" code="Rin " type="document" optional="yes" description="Document to change; defaults to the front document.">
+                <cocoa key="target"/>
+            </parameter>
+            <parameter name="using grep" code="Rgrp" type="boolean" optional="yes" description="Treat the search text as a regular expression.">
+                <cocoa key="grep"/>
+            </parameter>
+            <parameter name="case sensitive" code="Rcas" type="boolean" optional="yes">
+                <cocoa key="caseSensitive"/>
+            </parameter>
+            <result type="integer"/>
+        </command>
+
+        <command name="select line" code="QuirSlin" description="Select a line (1-based) and scroll to it.">
+            <cocoa class="QuireSelectLineCommand"/>
+            <direct-parameter type="integer"/>
+            <parameter name="in" code="Rin " type="document" optional="yes">
+                <cocoa key="target"/>
+            </parameter>
+        </command>
+
+        <command name="run worksheet command" code="QuirRunW" description="Run shell text in the document’s worksheet shell and return its output.">
+            <cocoa class="QuireRunShellCommand"/>
+            <direct-parameter type="text"/>
+            <parameter name="in" code="Rin " type="document" optional="yes">
+                <cocoa key="target"/>
+            </parameter>
+            <result type="text"/>
+        </command>
+    </suite>
+</dictionary>
