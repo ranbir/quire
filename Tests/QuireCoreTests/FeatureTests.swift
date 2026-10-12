@@ -252,3 +252,37 @@ final class LanguageModuleTests: XCTestCase {
         XCTAssertEqual(SymbolScanner.symbols(in: "function go() end", language: Languages.named("Lua")).map(\.name), ["go"])
     }
 }
+
+final class OpenPathTests: XCTestCase {
+    let base = URL(fileURLWithPath: "/work/proj")
+    func resolve(_ s: String, existing: Set<String> = []) -> OpenPath.Location? {
+        OpenPath.resolve(s, base: base, home: "/Users/me", exists: { existing.contains($0) })
+    }
+
+    func testPlainQuotedAndHome() {
+        XCTAssertEqual(resolve("  /a/b.md\n"), .init(path: "/a/b.md"))
+        XCTAssertEqual(resolve("\"/a/my notes.md\""), .init(path: "/a/my notes.md"))
+        XCTAssertEqual(resolve("'~/x.txt'"), .init(path: "/Users/me/x.txt"))
+        XCTAssertEqual(resolve("~"), .init(path: "/Users/me"))
+        XCTAssertNil(resolve("   "))
+    }
+
+    func testTerminalEscapesAndFileURLs() {
+        XCTAssertEqual(resolve(#"/a/my\ notes\ (1).md"#), .init(path: "/a/my notes (1).md"))
+        XCTAssertEqual(resolve("file:///a/my%20notes.md"), .init(path: "/a/my notes.md"))
+    }
+
+    func testRelativeToBase() {
+        XCTAssertEqual(resolve("docs/../README.md"), .init(path: "/work/proj/README.md"))
+    }
+
+    func testLineAndColumnSuffix() {
+        let files: Set<String> = ["/a/b.swift"]
+        XCTAssertEqual(resolve("/a/b.swift:42", existing: files), .init(path: "/a/b.swift", line: 42))
+        XCTAssertEqual(resolve("/a/b.swift:42:7:", existing: files), .init(path: "/a/b.swift", line: 42, column: 7))
+        // A file that really has a colon in its name wins over a line number.
+        XCTAssertEqual(resolve("/a/c.md:3", existing: ["/a/c.md:3"]), .init(path: "/a/c.md:3"))
+        // Missing file: keep the whole text so the error names what was typed.
+        XCTAssertEqual(resolve("/nope.md:3"), .init(path: "/nope.md:3"))
+    }
+}

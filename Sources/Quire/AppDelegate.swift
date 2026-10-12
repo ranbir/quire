@@ -103,6 +103,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item("New from Clipboard", #selector(newFromClipboard(_:)), "n", [.command, .control], target: self),
             sep(),
             item("Open…", #selector(NSDocumentController.openDocument(_:)), "o"),
+            item("Open Path…", #selector(openPath(_:)), "o", [.command, .option], target: self),
             item("Open Folder as Project…", #selector(openFolder(_:)), "o", [.command, .shift], target: self),
             item("Open from SFTP Server…", #selector(openFromSFTP(_:)), "o", [.command, .control], target: self),
             recent,
@@ -545,6 +546,53 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func openFromSFTP(_ sender: Any?) {
         RemoteBrowserWindowController.shared.showBrowser()
+    }
+
+    /// Opens a file or folder from a pasted path. A path already on the clipboard is filled in,
+    /// so ⌥⌘O then Return opens it. `path:line[:column]` jumps to that line.
+    @objc func openPath(_ sender: Any?) {
+        let base = editor?.doc?.fileURL?.deletingLastPathComponent() ?? URL(fileURLWithPath: NSHomeDirectory())
+        var text = ""
+        if let clip = NSPasteboard.general.string(forType: .string), clip.count < 4096,
+           let loc = OpenPath.resolve(clip, base: base), FileManager.default.fileExists(atPath: loc.path) {
+            text = clip.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        var message = "Paste or type the full path of a file or folder. Quotes, ~, file:// URLs and path:line are understood."
+        while true {
+            let alert = NSAlert()
+            alert.messageText = "Open Path"
+            alert.informativeText = message
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 460, height: 24))
+            field.stringValue = text
+            field.placeholderString = "~/Documents/notes/README.md"
+            field.lineBreakMode = .byTruncatingHead
+            alert.accessoryView = field
+            alert.addButton(withTitle: "Open")
+            alert.addButton(withTitle: "Cancel")
+            alert.window.initialFirstResponder = field
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+            text = field.stringValue
+            guard let problem = open(path: text, base: base) else { return }
+            message = problem
+        }
+    }
+
+    /// Opens what `path` names; returns why it couldn't, or nil once it's opening.
+    @discardableResult
+    func open(path: String, base: URL) -> String? {
+        guard let loc = OpenPath.resolve(path, base: base) else { return "Enter the path of a file or folder." }
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: loc.path, isDirectory: &isDirectory) else {
+            return "There's no file or folder at \(loc.path)."
+        }
+        let url = URL(fileURLWithPath: loc.path)
+        if isDirectory.boolValue { openProject(folder: url); return nil }
+        documentController.openDocument(withContentsOf: url, display: true) { doc, _, error in
+            if let error { NSApp.presentError(error); return }
+            guard let line = loc.line, let tv = (doc as? Document)?.editor.textView else { return }
+            tv.selectLine(line, column: max(0, (loc.column ?? 1) - 1), length: 0, selectWholeLine: loc.column == nil)
+        }
+        return nil
     }
 
     @objc func newFromClipboard(_ sender: Any?) {

@@ -10,7 +10,7 @@ Quire is a lightweight editor for the three kinds of files most people juggle ev
 
 **Working with text.** A large Text menu sorts, de-duplicates, wraps, re-cases and cleans up lines. Find and replace supports grep patterns with back-references and can search a whole folder. Any script in the Text Filters folder becomes a menu command that transforms the selection.
 
-**Reading Markdown.** `⌥⌘P` opens a live preview pane beside the editor. It renders Mermaid diagrams (flowcharts, sequence, class, state, ER and C4 architecture diagrams), KaTeX math and syntax-highlighted code, and updates in place as you type. Everything is bundled, so it works offline.
+**Reading Markdown.** Click the eye icon in the status bar (or press `⌥⌘P`) to open a live preview pane beside the editor. It renders Mermaid diagrams (flowcharts, sequence, class, state, ER and C4 architecture diagrams), KaTeX math and syntax-highlighted code, and updates in place as you type. Everything is bundled, so it works offline. See [Previewing Markdown, HTML and code](#previewing-markdown-html-and-code) below.
 
 **Projects and remote files.** Open a folder as a project with a sidebar of files and open documents, save it as a `.quireproject`, or edit files on a server over SFTP using your existing `ssh` setup.
 
@@ -19,6 +19,52 @@ Quire is a lightweight editor for the three kinds of files most people juggle ev
 **Shell worksheets.** A `.worksheet` file runs lines in a persistent zsh session and inserts the output below them, so a document can double as a runnable notebook.
 
 To install, download the latest signed and notarized `.dmg` from [Releases](https://github.com/ranbir/quire/releases), or build it from source as described below. Quire needs macOS 13 or later and runs natively on Apple silicon and Intel.
+
+## Previewing Markdown, HTML and code
+
+### Open the preview
+
+| To | Do this |
+|---|---|
+| Show the preview of a Markdown or HTML file | Click the **eye icon** at the bottom right of the window, in the status bar just left of the language menu |
+| Show the preview of any file, including code and plain text | Press **`⌥⌘P`** (Option-Command-P), or choose **View ▸ Show Preview**. The eye icon only appears for Markdown and HTML files |
+| Resize the preview | Drag the divider between the text and the preview. Quire remembers the width |
+| Hide the preview | Click the eye icon again, press `⌥⌘P`, click the **×** at the top right of the preview, or choose **View ▸ Hide Preview** |
+
+The preview opens as a pane to the right of the text, in normal windows and in project windows. It updates about a third of a second after you stop typing and keeps its scroll position, so you can write on the left and read the result on the right.
+
+### What it shows
+
+- **Markdown** is rendered as a formatted page: headings, lists, task lists, tables, links, images (paths relative to the file work), block quotes and raw HTML.
+- **Diagrams:** a fenced code block marked `mermaid` becomes a diagram. Flowcharts, sequence, class, state, entity-relationship, C4 architecture and pie diagrams are supported. If a diagram has a mistake, the preview shows the error above its source instead of a blank space.
+- **Math:** `$…$` inside a sentence, and `$$…$$` or a fenced `math` block on its own lines, are typeset with KaTeX. Prices such as "$5 and $10" are left alone.
+- **Code blocks** are syntax-highlighted, labelled with their language, and get a **Copy** button when you hover over them.
+- **HTML files** are shown as a browser would show them, with relative links, images and stylesheets resolved from the file's folder.
+- **Code and text files** are shown read-only with syntax highlighting.
+
+Colours follow your Mac's light or dark appearance, and everything is built into the app, so the preview works offline.
+
+For example, this Markdown:
+
+````markdown
+```mermaid
+flowchart LR
+    Editor -->|text| Preview
+    Preview --> Browser
+```
+
+The area of a circle is $\pi r^2$.
+````
+
+shows a three-box flowchart followed by a sentence with typeset math. The file [`docs/preview-sample.md`](docs/preview-sample.md) has a fuller example.
+
+### View the page as HTML in your browser
+
+Click the **compass icon** at the top right of the preview pane (its tooltip is **Open in Browser**). Quire turns the current document into an HTML page and opens it in your default browser, with the same formatting, diagrams and math as the preview.
+
+From the browser you can print the page or save it as a PDF (**File ▸ Print ▸ Save as PDF** in Safari or Chrome).
+
+There is no **Save as HTML** command yet. The page Quire opens is a temporary file in `~/Library/Caches/Quire/Preview`, and it loads its diagram and math libraries from inside Quire.app. It's meant for reading and printing on your own Mac. Sent to someone else, the diagrams and math would not render.
 
 ## Build & install
 
@@ -34,7 +80,7 @@ Requires macOS 13+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
 
 | Area | What you get |
 |---|---|
-| Documents | Window tabs, Open Recent, LF/CRLF/CR preserved on save, encoding detection (UTF-8/16 with or without BOM, Latin-1, Mac Roman, CP1252, Shift JIS…), changeable from the status bar, silent reload when the file changes on disk |
+| Documents | **File ▸ Open Path…** (`⌥⌘O`) opens a file or folder from a pasted path (a path already on the clipboard is filled in, so `⌥⌘O` then Return opens it; quotes, `~`, Terminal-escaped spaces, `file://` URLs and `path:line:column` all work). Window tabs, Open Recent, LF/CRLF/CR preserved on save, encoding detection (UTF-8/16 with or without BOM, Latin-1, Mac Roman, CP1252, Shift JIS…), changeable from the status bar, silent reload when the file changes on disk |
 | Editor | Line-number gutter (click/drag to select lines), soft wrap, page guide, current-line highlight, show invisibles, auto-indent, auto-expand tabs, close-bracket outdent |
 | Syntax colouring | Swift, C, C++, Objective-C, JavaScript, TypeScript, Python, Ruby, Shell, Go, Rust, Java/Kotlin, PHP, SQL, HTML, XML, CSS, Markdown, JSON, YAML, INI/TOML, Makefile. Detected from file extension, file name or `#!` line. Light and dark themes |
 | Navigation | Symbols popup (functions, classes, headings), Go to Line (`⌘J`, accepts `line:col`), Balance brackets (`⌘B`) |
@@ -48,7 +94,7 @@ Requires macOS 13+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
 | Code folding | Fold triangles in the gutter for braces, indentation (Python, YAML), Markdown headings and HTML/XML elements; **View ▸ Folding** folds the selection, collapses the enclosing block, or collapses/expands all. Folded text shows as a clickable `⋯`, and folds follow edits |
 | Completion | `⌥⎋` completes from the document's words and the language's keywords; optional **Auto-Complete as You Type** |
 | Clippings | **Clippings** menu with per-language and Universal snippets from `~/Library/Application Support/Quire/Clippings`. Tokens: `#SELECTION#`, `#INSERTION#`, `#CLIPBOARD#`, `#DATE#`, `#TIME#`, `#FILENAME#`, `#BASENAME#`, and `<#placeholders#>` (`⌃/` jumps to the next one). Inserted clippings match the current indentation |
-| Live preview | `⌥⌘P` (or the eye in the status bar) toggles a live Markdown/HTML/code preview pane to the right of the text (drag the divider to resize; the width is remembered). It updates in place as you type, keeps its scroll position, resolves relative images and can open in your browser. The built-in Markdown renderer covers headings, lists, task lists, tables, code blocks, links/references, emphasis and raw HTML. Bundled offline libraries add syntax-highlighted code blocks (highlight.js), math with `$…$`, `$$…$$` or ` ```math ` (KaTeX), and ` ```mermaid ` diagrams such as flowcharts, sequence, class, state, ER and C4 diagrams (Mermaid), all following light/dark mode. See `docs/preview-sample.md` |
+| Live preview | Click the eye icon in the status bar or press `⌥⌘P` for a live preview pane beside the text: Markdown with Mermaid diagrams, KaTeX math and highlighted code; HTML pages; and highlighted code files. **Open in Browser** (the compass icon in the pane) shows the page in your browser for printing or saving as PDF. See [Previewing Markdown, HTML and code](#previewing-markdown-html-and-code) |
 | Shell worksheets | **File ▸ New Shell Worksheet** (or any `.worksheet` file). `⌘↩` runs the current line or selection in a persistent zsh (directory and variables carry over) and inserts the output below; `⌘.` stops it |
 | Git | Gutter bars for added/modified/deleted lines vs `HEAD`, branch in the status bar, and a **Git** menu: Compare with HEAD, Blame, File History, Repository Status/Diff, Stage, Unstage, Discard Changes, Commit |
 | SFTP / SSH | **File ▸ Open from SFTP Server** (`⌃⌘O`) browses a host over `ssh` (keys, agent, `~/.ssh/config`); files are edited locally and uploaded on every save (atomic, keeps permissions). Password and host-key prompts appear as Quire dialogs (Quire acts as its own `SSH_ASKPASS`); passwords are never stored |

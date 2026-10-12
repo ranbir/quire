@@ -306,6 +306,23 @@ enum SelfTest {
         check("preview pane hides", mdoc.editor.preview == nil && pane?.superview == nil)
         mdoc.close()
 
+        // File ▸ Open Path: escaped spaces and a line:column suffix
+        if let app = NSApp.delegate as? AppDelegate {
+            let dir = fm.temporaryDirectory.appendingPathComponent("quire open path")
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let file = dir.appendingPathComponent("my notes.md")
+            try "one\ntwo\nthree\n".write(to: file, atomically: true, encoding: .utf8)
+            let typed = file.path.replacingOccurrences(of: " ", with: "\\ ") + ":3:2"
+            check("open path accepts an escaped path", app.open(path: typed, base: dir) == nil)
+            var opened: Document?
+            Self.wait { opened = NSDocumentController.shared.documents.first { $0.fileURL?.standardizedFileURL == file.standardizedFileURL } as? Document
+                        return opened?.editor.textView.selectedRange().location == 9 }
+            check("open path jumps to line and column", opened?.editor.textView.selectedRange().location == 9,
+                  "\(opened?.editor.textView.selectedRange() ?? NSRange())")
+            check("open path reports missing files", app.open(path: "/no/such/file.md", base: dir)?.contains("/no/such/file.md") == true)
+            opened?.close()
+        }
+
         // SSH askpass wiring
         check("ssh uses our askpass", RemoteFiles.client.environment["SSH_ASKPASS"] == Bundle.main.executablePath)
 
