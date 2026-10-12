@@ -1,8 +1,18 @@
 #!/bin/sh
-# Builds Quire.app into ./build. Pass --install to copy it to /Applications
-# and link the `quire` command into /usr/local/bin (or ~/bin).
+# Builds Quire.app into ./build.
+#
+#   ./build.sh            ad-hoc signed app for local use
+#   ./build.sh --install  also copy to /Applications and link the `quire` command
+#   ./build.sh --release  Developer ID signed, notarized and stapled app + .dmg
+#
+# --release needs a "Developer ID Application" identity in the keychain and a
+# notarytool keychain profile (default name: quire-notary), created with:
+#   xcrun notarytool store-credentials quire-notary --apple-id … --team-id …
 set -e
 cd "$(dirname "$0")"
+
+SIGN_ID="${SIGN_ID:-Developer ID Application: Ranbir Mazumdar (VYG245YAH5)}"
+NOTARY_PROFILE="${NOTARY_PROFILE:-quire-notary}"
 
 swift build -c release --arch arm64 --arch x86_64
 BIN=$(swift build -c release --arch arm64 --arch x86_64 --show-bin-path)/Quire
@@ -18,9 +28,38 @@ cp bin/quire "$APP/Contents/SharedSupport/bin/quire"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
 ICONSET=build/Quire.iconset
-swift tools/make-icon.swift "$ICONSET"
+rm -rf "$ICONSET"
+swift tools/make-icon.swift iconset "$ICONSET" serif
 iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/Quire.icns"
 rm -rf "$ICONSET"
+
+if [ "$1" = "--release" ]; then
+    VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
+    echo "Signing with: $SIGN_ID"
+    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/SharedSupport/bin/quire"
+    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
+    codesign --verify --strict --verbose=2 "$APP"
+
+    # Disk image with a drag-to-Applications layout
+    DMG=build/Quire-$VERSION.dmg
+    STAGE=build/dmg
+    rm -rf "$STAGE" "$DMG"
+    mkdir -p "$STAGE"
+    cp -R "$APP" "$STAGE/"
+    ln -s /Applications "$STAGE/Applications"
+    hdiutil create -volname "Quire $VERSION" -srcfolder "$STAGE" -fs HFS+ -format UDZO -ov "$DMG" >/dev/null
+    rm -rf "$STAGE"
+    codesign --force --timestamp --sign "$SIGN_ID" "$DMG"
+
+    echo "Submitting to Apple for notarization (usually a few minutes)…"
+    xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait
+    xcrun stapler staple "$DMG"
+    xcrun stapler staple "$APP"
+    spctl --assess --type open --context context:primary-signature --verbose "$DMG"
+    spctl --assess --type execute --verbose "$APP"
+    echo "Built $DMG (signed, notarized, stapled)"
+    exit 0
+fi
 
 codesign --force --sign - "$APP" >/dev/null
 echo "Built $APP"
