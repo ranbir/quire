@@ -4,6 +4,20 @@
 #   quire .                        open a folder browser
 #   some-command | quire           open piped text in a new document
 #   quire -                        same, reading stdin explicitly
+#   quire --export html|pdf doc.md [-o out] [--toc] [--title-page] …
+#                                  export Markdown without opening a window
+
+if [ "$1" = "--export" ]; then
+    # Run the app binary directly: next to this script inside Quire.app, else the installed app.
+    self="$0"
+    while [ -L "$self" ]; do
+        link="$(readlink "$self")"
+        case "$link" in /*) self="$link" ;; *) self="$(dirname "$self")/$link" ;; esac
+    done
+    bin="$(cd "$(dirname "$self")/../.." 2>/dev/null && pwd)/MacOS/Quire"
+    [ -x "$bin" ] || bin="/Applications/Quire.app/Contents/MacOS/Quire"
+    exec "$bin" "$@"
+fi
 
 if [ "$1" = "-" ] || { [ $# -eq 0 ] && [ ! -t 0 ]; }; then
     tmp="$(mktemp -t quire).txt"

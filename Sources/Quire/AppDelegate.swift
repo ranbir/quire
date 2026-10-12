@@ -118,8 +118,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item("Reveal in Finder", #selector(revealInFinder(_:)), "r", [.command, .option], target: self),
             item("Copy Path", #selector(copyPath(_:)), "c", [.command, .option, .shift], target: self),
             sep(),
+            submenu("Export", [
+                item("HTML…", #selector(EditorViewController.exportHTML(_:)), "e", [.command, .shift]),
+                item("PDF…", #selector(EditorViewController.exportPDF(_:))),
+            ]),
+            sep(),
             item("Page Setup…", #selector(NSDocument.runPageLayout(_:)), "p", [.command, .shift]),
             item("Print…", #selector(NSDocument.printDocument(_:)), "p"),
+            item("Print Source…", #selector(EditorViewController.printSource(_:))),
         ]))
 
         // Edit
@@ -129,6 +135,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             sep(),
             item("Cut", #selector(NSText.cut(_:)), "x"),
             item("Copy", #selector(NSText.copy(_:)), "c"),
+            item("Copy as Rich Text", #selector(EditorViewController.copyAsRichText(_:)), "c", [.command, .option]),
             item("Paste", #selector(NSText.paste(_:)), "v"),
             item("Delete", #selector(NSText.delete(_:))),
             item("Select All", #selector(NSText.selectAll(_:)), "a"),
@@ -248,9 +255,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item("Show Change Markers in Gutter", #selector(toggleGitIntegration(_:)), target: self),
         ]))
 
+        // Format (Markdown)
+        main.addItem(submenu("Format", [
+            item("Bold", #selector(EditorTextView.toggleBold(_:)), "b"),
+            item("Italic", #selector(EditorTextView.toggleItalic(_:)), "i"),
+            item("Inline Code", #selector(EditorTextView.toggleInlineCode(_:)), "c", [.command, .shift]),
+            item("Strikethrough", #selector(EditorTextView.toggleStrikethrough(_:)), "x", [.command, .shift]),
+            item("Link", #selector(EditorTextView.insertMarkdownLink(_:)), "k", [.command, .shift]),
+            sep(),
+            submenu("Heading", (1...6).map { n in
+                let it = item("Heading \(n)", #selector(EditorTextView.setHeadingLevel(_:)), "\(n)")
+                it.tag = n
+                return it
+            }),
+            item("Renumber List", #selector(EditorTextView.renumberList(_:))),
+        ]))
+
         // View
         main.addItem(submenu("View", [
             item("Show Preview", #selector(EditorViewController.togglePreview(_:)), "p", [.command, .option]),
+            submenu("Markdown", Prefs.MarkdownMode.allCases.enumerated().map { i, mode in
+                let it = item(mode.title, #selector(EditorViewController.setMarkdownMode(_:)))
+                it.tag = i
+                return it
+            } + [
+                sep(),
+                item("Smart Punctuation in Preview and Export", #selector(EditorViewController.toggleSmartPunctuation(_:))),
+                item("Folder for Pasted Images…", #selector(EditorViewController.chooseImagesFolder(_:))),
+            ]),
             sep(),
             item("Show Line Numbers", #selector(toggleLineNumbers(_:)), target: self),
             item("Soft Wrap Text", #selector(toggleSoftWrap(_:)), "\\", [.command, .option], target: self),
@@ -739,7 +771,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func showAbout(_ sender: Any?) {
         let credits = NSAttributedString(
-            string: "A fast plain-text and code editor for macOS.\n\nDeveloper: Ranbir Mazumdar",
+            string: "A fast plain-text and code editor for macOS.\n\nDeveloper: Ranbir Mazumdar\n\nIncludes cmark-gfm (BSD), KaTeX (MIT), Mermaid (MIT) and highlight.js (BSD). Licences are in Quire.app/Contents/Resources.",
             attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
@@ -795,6 +827,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 case "end": ed?.textView.setSelectedRange(NSRange(location: (ed?.textView.string as NSString?)?.length ?? 0, length: 0))
                 case let a where a.hasPrefix("type:"): ed?.textView.insertText(String(a.dropFirst(5)), replacementRange: ed!.textView.selectedRange())
                 case let a where a.hasPrefix("line:"): ed?.textView.selectLine(Int(a.dropFirst(5)) ?? 1, column: 0, length: 0)
+                case let a where a.hasPrefix("width:"):
+                    if let w = Double(a.dropFirst(6)), let win = ed?.view.window {
+                        var f = win.frame; f.size.width = CGFloat(w); win.setFrame(f, display: true)
+                    }
+                case let a where a.hasPrefix("mode:"):
+                    if let mode = Prefs.MarkdownMode(rawValue: String(a.dropFirst(5))) { ed?.markdownMode = mode }
                 default: break
                 }
             }

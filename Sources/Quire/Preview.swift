@@ -13,6 +13,11 @@ final class PreviewPane: NSViewController, WKNavigationDelegate {
     /// Identifies the page currently loaded; while it matches, updates swap the body in place.
     private var loadedShell: String?
     private var pendingShell: String?
+    private var scrollRelay: ScrollMessageRelay?
+    /// Set while the editor is being scrolled to follow the preview, so it doesn't echo back.
+    private var followingPreview = false
+    /// The editor follows the preview only while the pointer is over it (tests turn this off).
+    var followRequiresPointer = true
 
     /// Highlighting, math and diagram libraries: in the app bundle, or in the source tree when
     /// running from `swift build`.
@@ -33,11 +38,15 @@ final class PreviewPane: NSViewController, WKNavigationDelegate {
         self.editor = editor
         let config = WKWebViewConfiguration()
         config.preferences.isElementFullscreenEnabled = false
+        let relay = ScrollMessageRelay()
+        config.userContentController.add(relay, name: "quireScroll")
         webView = WKWebView(frame: .zero, configuration: config)
+        scrollRelay = relay
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Quire/Preview")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         tempFile = dir.appendingPathComponent("\(UUID().uuidString).html")
         super.init(nibName: nil, bundle: nil)
+        scrollRelay?.onMessage = { [weak self] body in self?.previewDidScroll(body) }
     }
 
     required init?(coder: NSCoder) { fatalError() }
@@ -121,7 +130,7 @@ final class PreviewPane: NSViewController, WKNavigationDelegate {
             }
             return Rendered(page: tag + text)
         case "Markdown":
-            body = Markdown.html(text)
+            body = MarkdownDocument(text, options: MarkdownOptions(smartPunctuation: Prefs.smartPunctuation)).html(sourcePositions: true)
         default:
             let name = Self.highlightNames[language] ?? language.lowercased()
             let cls = name.isEmpty ? "" : " class=\"language-\(Markdown.escape(name))\""
@@ -140,7 +149,7 @@ final class PreviewPane: NSViewController, WKNavigationDelegate {
         if let body = rendered.body, let shell = rendered.shell, shell == loadedShell {
             // Same page template: swap the body in place, keeping scroll and rendered diagrams.
             webView.callAsyncJavaScript("await quireUpdate(html)", arguments: ["html": body], in: nil, in: .page) { [weak self] result in
-                if case .failure = result { self?.loadedShell = nil; self?.load(rendered) }
+                if case .failure = result { self?.loadedShell = nil; self?.load(rendered) } else { self?.syncScroll() }
             }
             return
         }
@@ -159,6 +168,71 @@ final class PreviewPane: NSViewController, WKNavigationDelegate {
         }
     }
 
+    // MARK: Scroll sync
+
+    private var syncPending = false
+
+    /// Keeps a Markdown preview level with the editor: the block at the top of the editor is
+    /// at the top of the preview, using the `data-sourcepos` line numbers in the HTML.
+    func editorDidScroll() {
+        guard !followingPreview, !syncPending, loadedShell != nil, editor?.textView.language.name == "Markdown" else { return }
+        syncPending = true
+        DispatchQueue.main.async { [weak self] in
+            self?.syncPending = false
+            self?.syncScroll()
+        }
+    }
+
+    private func syncScroll() {
+        guard let tv = editor?.textView, tv.language.name == "Markdown", let lm = tv.layoutManager, let tc = tv.textContainer else { return }
+        let visible = tv.visibleRect
+        let atEnd = visible.maxY >= tv.bounds.maxY - 1
+        var point = visible.origin
+        point.y = max(0, point.y - tv.textContainerOrigin.y)
+        let glyph = lm.glyphIndex(for: point, in: tc)
+        let index = lm.characterIndexForGlyph(at: glyph)
+        let fragment = lm.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+        let ns = tv.string as NSString
+        var line = 1
+        var i = 0
+        let end = min(index, ns.length)
+        while i < end {
+            let r = ns.range(of: "\n", options: .literal, range: NSRange(location: i, length: end - i))
+            if r.location == NSNotFound { break }
+            line += 1
+            i = r.location + 1
+        }
+        // How far into that line the top of the view is, for smooth scrolling through long paragraphs.
+        let within = fragment.height > 0 ? min(max((point.y - fragment.minY) / fragment.height, 0), 1) : 0
+        webView.evaluateJavaScript("window.quireScrollToLine && quireScrollToLine(\(Double(line) + Double(within)), \(atEnd))")
+    }
+
+    /// The reader scrolled the preview: bring the matching source line to the top of the editor.
+    private func previewDidScroll(_ body: Any) {
+        guard let info = body as? [String: Any], let line = (info["line"] as? NSNumber)?.doubleValue,
+              let tv = editor?.textView, tv.language.name == "Markdown", let lm = tv.layoutManager,
+              let window = webView.window else { return }
+        // Only when the pointer is over the preview: page reloads also scroll it.
+        let mouse = webView.convert(window.convertPoint(fromScreen: NSEvent.mouseLocation), from: nil)
+        guard !followRequiresPointer || webView.bounds.contains(mouse) else { return }
+        let ns = tv.string as NSString
+        let lineIndex = LineIndex(tv.string)
+        let whole = max(0, min(Int(line) - 1, lineIndex.lineCount - 1))
+        let start = lineIndex.range(ofLine: whole).location
+        var y: CGFloat
+        if (info["atEnd"] as? Bool) == true {
+            y = tv.bounds.height
+        } else {
+            let g = lm.glyphIndexForCharacter(at: min(start, max(ns.length - 1, 0)))
+            let frag = ns.length == 0 ? .zero : lm.lineFragmentRect(forGlyphAt: g, effectiveRange: nil)
+            y = frag.minY + frag.height * CGFloat(line - Double(Int(line))) + tv.textContainerOrigin.y
+        }
+        followingPreview = true
+        tv.enclosingScrollView?.contentView.scroll(to: NSPoint(x: 0, y: max(0, min(y, tv.bounds.height - (tv.enclosingScrollView?.contentView.bounds.height ?? 0)))))
+        tv.enclosingScrollView?.reflectScrolledClipView(tv.enclosingScrollView!.contentView)
+        DispatchQueue.main.async { [weak self] in self?.followingPreview = false }
+    }
+
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         loadedShell = pendingShell
         // Restore the scroll position now and again once diagrams and math have laid out.
@@ -166,6 +240,11 @@ final class PreviewPane: NSViewController, WKNavigationDelegate {
             window.scrollTo(0, \(savedScroll));
             window.quireReady && window.quireReady.then(() => window.scrollTo(0, \(savedScroll)));
             """)
+        if editor?.textView.language.name == "Markdown" {
+            webView.callAsyncJavaScript("if (window.quireReady) await window.quireReady;", arguments: [:], in: nil, in: .page) { [weak self] _ in
+                self?.syncScroll()
+            }
+        }
     }
 
     /// What the pane currently shows, as drawn by WebKit (for tests).
@@ -179,6 +258,11 @@ final class PreviewPane: NSViewController, WKNavigationDelegate {
             if (window.quireReady) await window.quireReady;
             return document.body.innerHTML;
             """, arguments: [:], in: nil, in: .page) { done(try? $0.get() as? String) }
+    }
+
+    /// Runs a script in the page and returns its result (for tests).
+    func evaluate(_ script: String, _ done: @escaping (Any?) -> Void) {
+        webView.callAsyncJavaScript(script, arguments: [:], in: nil, in: .page) { done(try? $0.get()) }
     }
 
     /// Links open in the default browser instead of replacing the preview.
@@ -197,6 +281,14 @@ final class PreviewPane: NSViewController, WKNavigationDelegate {
         let url = tempFile.deletingLastPathComponent().appendingPathComponent("\(UUID().uuidString).html")
         try? Data(renderHTML().utf8).write(to: url)
         NSWorkspace.shared.open(url)
+    }
+}
+
+/// Receives the preview's scroll messages without the content controller retaining the pane.
+private final class ScrollMessageRelay: NSObject, WKScriptMessageHandler {
+    var onMessage: ((Any) -> Void)?
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        onMessage?(message.body)
     }
 }
 

@@ -22,7 +22,25 @@ enum Prefs {
             "showPageGuide": true, "pageGuideColumn": 80, "highlightCurrentLine": true,
             "expandTabs": true, "tabWidth": 4, "fontSize": 13.0, "autoIndent": true,
             "autoComplete": false, "gitIntegration": true, "appearance": Appearance.system.rawValue,
+            "markdownMode": MarkdownMode.live.rawValue, "smartPunctuation": false, "markdownImagesFolder": "assets",
         ])
+    }
+
+    enum MarkdownMode: String, CaseIterable {
+        /// Plain text with syntax colouring.
+        case source
+        /// Formatted text with the Markdown markers dimmed.
+        case styled
+        /// Formatted text with markers hidden except around the cursor.
+        case live
+
+        var title: String {
+            switch self {
+            case .source: return "Source"
+            case .styled: return "Styled"
+            case .live: return "Live Preview"
+            }
+        }
     }
 
     enum Appearance: String, CaseIterable {
@@ -50,6 +68,23 @@ enum Prefs {
     static var appearance: Appearance {
         get { Appearance(rawValue: d.string(forKey: "appearance") ?? "") ?? .system }
         set { set(newValue.rawValue, "appearance"); NSApp.appearance = newValue.nsAppearance }
+    }
+
+    /// How new Markdown editors show their text. Changing one editor's mode updates this
+    /// default without restyling other open editors.
+    static var markdownMode: MarkdownMode {
+        get { MarkdownMode(rawValue: d.string(forKey: "markdownMode") ?? "") ?? .live }
+        set { d.set(newValue.rawValue, forKey: "markdownMode") }
+    }
+
+    /// Curly quotes, dashes and ellipses in the preview and exports.
+    static var smartPunctuation: Bool { get { d.bool(forKey: "smartPunctuation") } set { set(newValue, "smartPunctuation") } }
+
+    /// Folder, relative to a Markdown document, where pasted and dropped images are saved
+    /// ("" means the document's own folder).
+    static var markdownImagesFolder: String {
+        get { d.string(forKey: "markdownImagesFolder") ?? "assets" }
+        set { d.set(newValue, forKey: "markdownImagesFolder") }
     }
 
     private static func set(_ v: Any, _ key: String) {
@@ -136,4 +171,19 @@ enum Theme {
     static let heading = dyn(0x1F5FB0, 0x7FB8FF)
     static let emphasis = dyn(0x8E3E9E, 0xD7A0E6)
     static let link = dyn(0x1665D8, 0x66A6FF)
+
+    // Markdown formatting in the editor
+    static let markdownMarker = dyn(0xB0B3BA, 0x5E6169)
+    static let markdownMuted = dyn(0x6E6E73, 0x9A9AA0)
+    static let markdownCodeBackground = dyn(0xF3F3F5, 0x2A2B30)
+    static let markdownQuoteBar = dyn(0xD8D8DC, 0x45464C)
+    static let markdownHTML = dyn(0x8A6A00, 0xC9A65A)
+    static let markdownMath = dyn(0x0E6E8A, 0x67D4F0)
+
+    /// GitHub alert colours, as in the preview.
+    private static let alertColors: [String: NSColor] = [
+        "note": dyn(0x0969DA, 0x4493F8), "tip": dyn(0x1A7F37, 0x3FB950), "important": dyn(0x8250DF, 0xAB7DF8),
+        "warning": dyn(0x9A6700, 0xD29922), "caution": dyn(0xCF222E, 0xF85149),
+    ]
+    static func markdownAlert(_ kind: String) -> NSColor { alertColors[kind] ?? alertColors["note"]! }
 }

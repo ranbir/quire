@@ -59,3 +59,39 @@ final class RunShellCommand: NSScriptCommand {
         }
     }
 }
+
+@objc(QuireExportCommand)
+final class ExportCommand: NSScriptCommand {
+    /// `export as PDF to …` with no document: the front one.
+    override func performDefaultImplementation() -> Any? {
+        guard let doc = targetDocument else { return fail("No document is open.") }
+        return doc.handleExportScriptCommand(self)
+    }
+
+    /// Exports `doc`, suspending the script until the file is written.
+    func export(_ doc: Document) -> Any? {
+        guard let url = evaluatedArguments?["destination"] as? URL else { return fail("Missing “to” file.", code: errAEParamMissed) }
+        guard doc.editor.textView.language.name == "Markdown" else { return fail("Only Markdown documents can be exported.") }
+        let pdf = (evaluatedArguments?["format"] as? NSNumber)?.uint32Value == 0x5145_7850   // 'QExP'
+        var options = ExportPrefs.load()
+        if let toc = evaluatedArguments?["toc"] as? Bool { options.tableOfContents = toc }
+        let exporter = MarkdownExporter(markdown: doc.editor.textView.string, fileURL: doc.fileURL, name: doc.displayName, options: options)
+        let finish: (Error?) -> Void = { [self] error in
+            if let error {
+                scriptErrorNumber = errOSAGeneralError
+                scriptErrorString = error.localizedDescription
+            }
+            resumeExecution(withResult: nil)
+        }
+        suspendExecution()
+        if pdf { exporter.exportPDF(to: url, printInfo: doc.printInfo, finish) } else { exporter.exportHTML(to: url, finish) }
+        return nil
+    }
+}
+
+extension Document {
+    /// `export document "x.md" as PDF to …` arrives here (sdef `responds-to`).
+    @objc func handleExportScriptCommand(_ command: NSScriptCommand) -> Any? {
+        (command as? ExportCommand)?.export(self)
+    }
+}

@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import QuireCore
 
 /// Exercises the AppKit editor layer against a real document and text view.
@@ -306,6 +307,406 @@ enum SelfTest {
         check("preview pane hides", mdoc.editor.preview == nil && pane?.superview == nil)
         mdoc.close()
 
+        // Scroll sync: scrolling the editor brings the matching block to the top of the preview
+        let long = (1...200).map { "Paragraph \($0) with enough words to be a line.\n" }.joined(separator: "\n")
+        let (sdoc, stv) = try makeEditor("# Top\n\n" + long, "scroll-test.md")
+        sdoc.editor.showPreview(nil)
+        var loaded = false
+        Self.wait(10) {
+            if !loaded { sdoc.editor.preview?.whenRendered { if $0?.contains("Paragraph 200") == true { loaded = true } } }
+            return loaded
+        }
+        let target = (stv.string as NSString).range(of: "Paragraph 120 ")
+        stv.layoutManager?.ensureLayout(for: stv.textContainer!)
+        let rect = stv.layoutManager!.boundingRect(forGlyphRange: stv.layoutManager!.glyphRange(forCharacterRange: target, actualCharacterRange: nil), in: stv.textContainer!)
+        sdoc.editor.scrollView.contentView.scroll(to: NSPoint(x: 0, y: rect.minY + stv.textContainerOrigin.y))
+        sdoc.editor.scrollView.reflectScrolledClipView(sdoc.editor.scrollView.contentView)
+        var topText = ""
+        var asked = false
+        Self.wait(5) {
+            if !asked {
+                asked = true
+                sdoc.editor.preview?.evaluate("""
+                    const el = [...document.querySelectorAll("p")].find(p => p.getBoundingClientRect().bottom > 14);
+                    return el ? el.textContent : "";
+                    """) { topText = ($0 as? String) ?? ""; asked = false }
+            }
+            return topText.hasPrefix("Paragraph 120 ") || topText.hasPrefix("Paragraph 119 ")
+        }
+        check("preview scrolls with the editor", topText.hasPrefix("Paragraph 120 ") || topText.hasPrefix("Paragraph 119 "), topText)
+        // …and the editor with the preview
+        sdoc.editor.preview?.followRequiresPointer = false
+        var scrolledPreview = false
+        sdoc.editor.preview?.evaluate("""
+            const el = [...document.querySelectorAll("p")].find(p => p.textContent.startsWith("Paragraph 40 "));
+            await new Promise(r => setTimeout(r, 300));
+            window.scrollTo(0, el.getBoundingClientRect().top + window.scrollY - 12);
+            return true;
+            """) { _ in scrolledPreview = true }
+        func editorTopText() -> String {
+            guard let lm = stv.layoutManager, let tc = stv.textContainer else { return "" }
+            var p = stv.visibleRect.origin
+            p.y -= stv.textContainerOrigin.y
+            let i = lm.characterIndexForGlyph(at: lm.glyphIndex(for: p, in: tc))
+            let ns = stv.string as NSString
+            return ns.substring(with: ns.lineRange(for: NSRange(location: min(i + 1, ns.length - 1), length: 0)))
+        }
+        Self.wait(5) { scrolledPreview && (editorTopText().hasPrefix("Paragraph 40 ") || editorTopText().hasPrefix("Paragraph 39 ")) }
+        check("editor scrolls with the preview", editorTopText().hasPrefix("Paragraph 40 ") || editorTopText().hasPrefix("Paragraph 39 "), editorTopText())
+        sdoc.editor.togglePreview(nil)
+        sdoc.close()
+
+        // Markdown formatting in the editor (Styled mode)
+        let (stdoc, sttv) = try makeEditor("# Head\n\nplain **bold** *it* `code`\n\n- item\n", "styled-test.md")
+        stdoc.editor.markdownMode = .styled
+        func font(_ s: String, in tv: NSTextView) -> NSFont? {
+            let r = (tv.string as NSString).range(of: s)
+            return r.location == NSNotFound ? nil : tv.textStorage?.attribute(.font, at: r.location, effectiveRange: nil) as? NSFont
+        }
+        let baseSize = Prefs.font.pointSize
+        Self.wait(2) { (font("Head", in: sttv)?.pointSize ?? 0) > baseSize }
+        check("styled: heading is larger and bold", (font("Head", in: sttv)?.pointSize ?? 0) > baseSize * 1.4
+              && font("Head", in: sttv)?.fontDescriptor.symbolicTraits.contains(.bold) == true, "\(String(describing: font("Head", in: sttv)))")
+        check("styled: strong is bold", font("bold", in: sttv)?.fontDescriptor.symbolicTraits.contains(.bold) == true)
+        check("styled: emphasis is italic", font("it*", in: sttv)?.fontDescriptor.symbolicTraits.contains(.italic) == true)
+        check("styled: plain text keeps the editor font", font("plain", in: sttv) == Prefs.font)
+        check("styled: formatting doesn't edit the document", !stdoc.isDocumentEdited && stdoc.undoManager?.canUndo != true)
+        let markerColor = sttv.layoutManager?.temporaryAttribute(.foregroundColor, atCharacterIndex: (sttv.string as NSString).range(of: "**").location, effectiveRange: nil) as? NSColor
+        check("styled: markers are dimmed", markerColor == Theme.markdownMarker)
+        let bulletIndent = (sttv.textStorage?.attribute(.paragraphStyle, at: (sttv.string as NSString).range(of: "- item").location, effectiveRange: nil) as? NSParagraphStyle)?.headIndent ?? 0
+        check("styled: list items get a hanging indent", bulletIndent > 0, "\(bulletIndent)")
+        // Typing restyles just the edited lines.
+        sttv.setSelectedRange(NSRange(location: (sttv.string as NSString).length, length: 0))
+        step(sttv) { sttv.insertText("\n## Added", replacementRange: sttv.selectedRange()) }
+        Self.wait(2) { (font("Added", in: sttv)?.pointSize ?? 0) > baseSize }
+        check("styled: new heading is styled as you type", (font("Added", in: sttv)?.pointSize ?? 0) > baseSize * 1.2)
+        check("styled: an edit restyles only nearby lines", stdoc.editor.markdownStyler.lastRegion.location > 10, "\(stdoc.editor.markdownStyler.lastRegion)")
+        sttv.undoManager?.undo()
+        Self.wait(1) { !sttv.string.contains("Added") }
+        check("styled: undo removes only the typing", sttv.string == "# Head\n\nplain **bold** *it* `code`\n\n- item\n", sttv.string.debugDescription)
+        stdoc.editor.markdownMode = .source
+        check("source mode: plain fonts again", font("Head", in: sttv) == Prefs.font && font("bold", in: sttv) == Prefs.font)
+        stdoc.editor.markdownMode = .styled
+        Self.wait(2) { (font("Head", in: sttv)?.pointSize ?? 0) > baseSize }
+        // A 200 KB document: each keystroke's main-thread work stays small.
+        let sample = (try? String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+            .appendingPathComponent("../../docs/preview-sample.md").standardized, encoding: .utf8)) ?? "# x\n\ntext\n"
+        var big = ""
+        while big.utf8.count < 200_000 { big += sample + "\n\n" }
+        sttv.string = big
+        stdoc.editor.markdownStyler.restyleAll()
+        Self.wait(10) { stdoc.editor.markdownStyler.spans.count > 1000 && !stdoc.editor.markdownStyler.isStylingInBackground }
+        // Typing into prose: the common case.
+        var worst: TimeInterval = 0
+        let bigText = (sttv.string as NSString)
+        var searchFrom = 0
+        for _ in 0..<5 {
+            let hit = bigText.range(of: "renders", range: NSRange(location: searchFrom, length: bigText.length - searchFrom))
+            guard hit.location != NSNotFound else { break }
+            searchFrom = NSMaxRange(hit) + 20_000
+            sttv.setSelectedRange(NSRange(location: hit.location + 3, length: 0))
+            step(sttv) { sttv.insertText("x", replacementRange: sttv.selectedRange()) }
+            let before = stdoc.editor.markdownStyler.lastPassDuration
+            Self.wait(2) { stdoc.editor.markdownStyler.lastPassDuration != before }
+            worst = max(worst, stdoc.editor.markdownStyler.lastPassDuration)
+        }
+        print("styled: worst prose keystroke on 200 KB: \(String(format: "%.1f", worst * 1000)) ms")
+        // Debug builds are about twice as slow as release, where the target is 8 ms.
+        #if DEBUG
+        let budget = 0.020
+        #else
+        let budget = 0.008
+        #endif
+        check("styled: typing prose in a 200 KB file stays within \(Int(budget * 1000)) ms a keystroke", worst < budget, "\(worst * 1000) ms")
+        // Typing while a big file is still being formatted keeps the background work going.
+        stdoc.editor.markdownStyler.restyleAll()
+        Self.wait(5) { stdoc.editor.markdownStyler.isStylingInBackground }
+        let early = (sttv.string as NSString).range(of: "renders").location
+        sttv.setSelectedRange(NSRange(location: early + 2, length: 0))
+        let beforeEarly = stdoc.editor.markdownStyler.lastPassDuration
+        step(sttv) { sttv.insertText("y", replacementRange: sttv.selectedRange()) }
+        Self.wait(2) { stdoc.editor.markdownStyler.lastPassDuration != beforeEarly }
+        let earlyCost = stdoc.editor.markdownStyler.lastPassDuration
+        Self.wait(10) { !stdoc.editor.markdownStyler.isStylingInBackground }
+        let lastHeading = (sttv.string as NSString).range(of: "## Code", options: .backwards).location
+        let lastFont = sttv.textStorage?.attribute(.font, at: lastHeading + 3, effectiveRange: nil) as? NSFont
+        check("styled: typing during background formatting stays cheap and the rest still gets formatted",
+              earlyCost < budget && (lastFont?.pointSize ?? 0) > Prefs.font.pointSize, "\(Int(earlyCost * 1000)) ms, \(String(describing: lastFont))")
+        // Breaking a $$ block changes everything after it: the whole rest is restyled.
+        let dollars = (sttv.string as NSString).range(of: "$$\n\nPrices")
+        sttv.setSelectedRange(NSRange(location: dollars.location + 2, length: 0))
+        step(sttv) { sttv.insertText("x", replacementRange: sttv.selectedRange()) }
+        let before = stdoc.editor.markdownStyler.lastPassDuration
+        Self.wait(2) { stdoc.editor.markdownStyler.lastPassDuration != before }
+        print("styled: structural edit restyling \(stdoc.editor.markdownStyler.lastRegion.length) characters: \(Int(stdoc.editor.markdownStyler.lastPassDuration * 1000)) ms")
+        stdoc.close()
+
+        // Live Preview: markers hidden away from the cursor
+        let liveText = "# Head\n\nSome **bold** and [a link](https://example.com/x).\n\n- [ ] task\n\n***\n\n```\ncode\n```\n\nend"
+        let (lvDoc, lvtv) = try makeEditor(liveText, "live-test.md")
+        lvDoc.editor.markdownMode = .live
+        let lvns = lvtv.string as NSString
+        lvtv.setSelectedRange(NSRange(location: lvns.length, length: 0))
+        let lvlm = lvtv.layoutManager as! InvisiblesLayoutManager
+        func glyphProperty(_ s: String, offset: Int = 0) -> NSLayoutManager.GlyphProperty? {
+            let r = (lvtv.string as NSString).range(of: s)
+            guard r.location != NSNotFound else { return nil }
+            lvlm.ensureGlyphs(forCharacterRange: NSRange(location: 0, length: (lvtv.string as NSString).length))
+            return lvlm.propertyForGlyph(at: lvlm.glyphIndexForCharacter(at: r.location + offset))
+        }
+        Self.wait(2) { !lvDoc.editor.folds.markup.isEmpty }
+        check("live: heading and emphasis markers are hidden", glyphProperty("# Head") == .null && glyphProperty("**bold") == .null)
+        check("live: link URL is hidden, text shown", glyphProperty("](https") == .null && glyphProperty("a link") != .null)
+        let styles = lvDoc.editor.folds.markup.map(\.style)
+        check("live: bullet, checkbox and rule widgets", styles.contains(.bullet) && styles.contains(.checkbox(checked: false)) && styles.contains(.rule), "\(styles)")
+        lvtv.setSelectedRange(NSRange(location: lvns.range(of: "bold").location, length: 0))
+        check("live: markers reappear where the cursor is", glyphProperty("**bold") != .null && glyphProperty("# Head") == .null)
+        check("live: ⌘-click finds the link", lvtv.linkResolver?(lvns.range(of: "a link").location + 2)?.absoluteString == "https://example.com/x")
+        lvtv.setSelectedRange(NSRange(location: lvns.length, length: 0))
+        if let box = lvDoc.editor.folds.markup.first(where: { if case .checkbox = $0.style { return true }; return false }) {
+            lvlm.ensureLayout(for: lvtv.textContainer!)
+            let r = lvlm.checkboxRect(for: box)
+            let p = lvtv.convert(NSPoint(x: r.midX + lvtv.textContainerOrigin.x, y: r.midY + lvtv.textContainerOrigin.y), to: nil)
+            let click = NSEvent.mouseEvent(with: .leftMouseDown, location: p, modifierFlags: [], timestamp: 0, windowNumber: lvtv.window?.windowNumber ?? 0,
+                                           context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!
+            var clicked = false
+            step(lvtv) { clicked = lvtv.handleMarkdownClick(click) }
+            check("live: clicking a checkbox ticks the task", clicked && lvtv.string.contains("- [x] task"), lvtv.string)
+        } else {
+            check("live: clicking a checkbox ticks the task", false, "no checkbox")
+        }
+        lvtv.setSelectedRange(NSRange(location: (lvtv.string as NSString).length, length: 0))
+        lvlm.ensureLayout(for: lvtv.textContainer!)
+        // The fence line's fragment is the one holding its line break.
+        let fence = lvlm.lineFragmentRect(forGlyphAt: lvlm.glyphIndexForCharacter(at: (lvtv.string as NSString).range(of: "```").location + 3), effectiveRange: nil)
+        let codeLine = lvlm.lineFragmentRect(forGlyphAt: lvlm.glyphIndexForCharacter(at: (lvtv.string as NSString).range(of: "code").location), effectiveRange: nil)
+        check("live: hidden code fence lines collapse", fence.height < codeLine.height * 0.5, "\(fence.height) vs \(codeLine.height)")
+        lvDoc.editor.markdownMode = .styled
+        check("styled: no hidden markers", lvDoc.editor.folds.markup.isEmpty && glyphProperty("# Head") != .null)
+        lvDoc.close()
+
+        // GitHub alerts and inline code in Live Preview
+        let (alDoc, altv) = try makeEditor("> [!WARNING]\n> Careful with `code`.\n\nend", "alerts.md")
+        alDoc.editor.markdownMode = .live
+        altv.setSelectedRange(NSRange(location: (altv.string as NSString).length, length: 0))
+        let allm = altv.layoutManager as! InvisiblesLayoutManager
+        let titleAt = (altv.string as NSString).range(of: "WARNING").location
+        let titleColor = allm.temporaryAttribute(.foregroundColor, atCharacterIndex: titleAt, effectiveRange: nil) as? NSColor
+        let bar = allm.markdownBlocks.first { $0.kind == .quote }
+        check("live: alerts get a coloured bar and label", titleColor == Theme.markdownAlert("warning") && bar?.color == Theme.markdownAlert("warning"),
+              "\(String(describing: titleColor)) \(String(describing: bar))")
+        allm.ensureGlyphs(forCharacterRange: NSRange(location: 0, length: (altv.string as NSString).length))
+        check("live: alert brackets hidden", allm.propertyForGlyph(at: allm.glyphIndexForCharacter(at: titleAt - 1)) == .null)
+        let codeAt = (altv.string as NSString).range(of: "code").location
+        check("live: inline code background is drawn per line, not as an attribute",
+              allm.inlineCode.count == 1 && allm.temporaryAttribute(.backgroundColor, atCharacterIndex: codeAt, effectiveRange: nil) == nil)
+        alDoc.close()
+
+        // Live Preview widgets: math, diagrams and images drawn in place
+        let wDir = fm.temporaryDirectory.appendingPathComponent("quire-widgets-\(UUID().uuidString)")
+        try fm.createDirectory(at: wDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: wDir) }
+        let wpng = NSImage(size: NSSize(width: 60, height: 30), flipped: false) { r in NSColor.orange.setFill(); r.fill(); return true }
+        try NSBitmapImageRep(data: wpng.tiffRepresentation!)!.representation(using: .png, properties: [:])!.write(to: wDir.appendingPathComponent("w.png"))
+        let (wDoc, wtv) = try makeEditor("Math $a^2$ here.\n\n```mermaid\ngraph LR\n  A --> B\n```\n\n![pic](w.png)\n\nend", "widgets.md")
+        wDoc.fileURL = wDir.appendingPathComponent("widgets.md")
+        wDoc.editor.markdownMode = .live
+        wtv.setSelectedRange(NSRange(location: (wtv.string as NSString).length, length: 0))
+        wDoc.editor.markdownStyler.updateLive(selection: wtv.selectedRange())
+        func widgetCount() -> Int { wDoc.editor.folds.markup.filter { if case .widget = $0.style { return true }; return false }.count }
+        Self.wait(30) { widgetCount() == 3 }
+        check("live: math, diagram and image become pictures", widgetCount() == 3, "\(wDoc.editor.folds.markup.map(\.style))")
+        wtv.setSelectedRange(NSRange(location: 2, length: 0))
+        check("live: a picture turns back into source at the cursor", widgetCount() == 2)
+        wDoc.close()
+
+        // Tables: Tab formats and moves to the next cell
+        let (tDoc, ttv) = try makeEditor("| a | b |\n|---|---|\n| 1 | 2 |", "table.md")
+        ttv.setSelectedRange(NSRange(location: (ttv.string as NSString).range(of: "1").location, length: 0))
+        step(ttv) { ttv.insertTab(nil) }
+        check("md: Tab in a table pads the columns and moves on", ttv.string == "| a   | b   |\n| --- | --- |\n| 1   | 2   |"
+              && (ttv.string as NSString).substring(with: ttv.selectedRange()) == "2", ttv.string)
+        tDoc.close()
+
+        // Markdown editing behaviours
+        let (edDoc, etv) = try makeEditor("- one", "edit-test.md")
+        func caretAtEnd() { etv.setSelectedRange(NSRange(location: (etv.string as NSString).length, length: 0)) }
+        caretAtEnd()
+        step(etv) { etv.insertNewline(nil) }
+        check("md: Return continues a list", etv.string == "- one\n- ", etv.string.debugDescription)
+        step(etv) { etv.insertNewline(nil) }
+        check("md: Return on an empty item ends the list", etv.string == "- one\n", etv.string.debugDescription)
+        etv.string = "1. a\n2. b\n3. c"
+        etv.setSelectedRange(NSRange(location: 8, length: 0))   // in "2. b"
+        step(etv) { etv.insertTab(nil) }
+        check("md: Tab nests an item, restarting and renumbering", etv.string == "1. a\n    1. b\n2. c", etv.string.debugDescription)
+        step(etv) { etv.insertBacktab(nil) }
+        check("md: Shift-Tab moves it back and renumbers", etv.string == "1. a\n2. b\n3. c", etv.string.debugDescription)
+        etv.string = "make this bold"
+        etv.window?.makeFirstResponder(etv)
+        etv.setSelectedRange(NSRange(location: 5, length: 4))
+        let cmdB = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: 0, windowNumber: etv.window?.windowNumber ?? 0,
+                                    context: nil, characters: "b", charactersIgnoringModifiers: "b", isARepeat: false, keyCode: 11)!
+        var handled = false
+        step(etv) { handled = etv.performKeyEquivalent(with: cmdB) }
+        check("md: ⌘B makes bold", handled && etv.string == "make **this** bold", etv.string)
+        step(etv) { _ = etv.performKeyEquivalent(with: cmdB) }
+        check("md: ⌘B again removes it", etv.string == "make this bold", etv.string)
+        etv.setSelectedRange(NSRange(location: 5, length: 4))
+        step(etv) { etv.insertText("`", replacementRange: etv.selectedRange()) }
+        check("md: typing ` around a selection wraps it", etv.string == "make `this` bold" && etv.selectedRange() == NSRange(location: 6, length: 4), etv.string)
+        let pb = NSPasteboard(name: NSPasteboard.Name("quire-selftest-\(UUID().uuidString)"))
+        pb.clearContents()
+        pb.setString("https://example.com/x", forType: .string)
+        etv.setSelectedRange(NSRange(location: 0, length: 4))
+        step(etv) { _ = etv.readSelection(from: pb, type: .string) }
+        check("md: pasting a URL over a selection makes a link", etv.string.hasPrefix("[make](https://example.com/x)"), etv.string)
+        // Images: pasted image data and dropped files go into assets/ next to the document
+        let docDir = fm.temporaryDirectory.appendingPathComponent("quire-assets-\(UUID().uuidString)")
+        try fm.createDirectory(at: docDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: docDir) }
+        edDoc.fileURL = docDir.appendingPathComponent("notes.md")
+        etv.string = ""
+        let dot = NSImage(size: NSSize(width: 2, height: 2), flipped: false) { r in NSColor.blue.setFill(); r.fill(); return true }
+        pb.clearContents()
+        pb.setData(NSBitmapImageRep(data: dot.tiffRepresentation!)!.representation(using: .png, properties: [:]), forType: .png)
+        step(etv) { _ = etv.readSelection(from: pb, type: .png) }
+        let pasted = (try? fm.contentsOfDirectory(atPath: docDir.appendingPathComponent("assets").path)) ?? []
+        check("md: pasted image saved in assets/ and linked", pasted.count == 1 && etv.string == "![](assets/\(pasted.first ?? "?"))", "\(pasted) \(etv.string)")
+        let savedFolder = Prefs.markdownImagesFolder
+        Prefs.markdownImagesFolder = "pics/notes"
+        etv.string = ""
+        step(etv) { _ = etv.readSelection(from: pb, type: .png) }
+        let inPics = (try? fm.contentsOfDirectory(atPath: docDir.appendingPathComponent("pics/notes").path)) ?? []
+        check("md: images go to the chosen folder", inPics.count == 1 && etv.string == "![](pics/notes/\(inPics.first ?? "?"))", etv.string)
+        Prefs.markdownImagesFolder = savedFolder
+        let outside = fm.temporaryDirectory.appendingPathComponent("quire-drop-\(UUID().uuidString).png")
+        try NSBitmapImageRep(data: dot.tiffRepresentation!)!.representation(using: .png, properties: [:])!.write(to: outside)
+        defer { try? fm.removeItem(at: outside) }
+        etv.string = ""
+        pb.clearContents()
+        pb.writeObjects([outside as NSURL])
+        step(etv) { _ = etv.readSelection(from: pb, type: .fileURL) }
+        let name = outside.deletingPathExtension().lastPathComponent
+        check("md: dropped image copied into assets/ and linked", etv.string == "![\(name)](assets/\(name).png)"
+              && fm.fileExists(atPath: docDir.appendingPathComponent("assets/\(name).png").path), etv.string)
+        pb.releaseGlobally()
+        edDoc.editor.updateInfoForTests()
+        Self.wait(3) { edDoc.editor.markdownWordCount != nil }
+        check("md: word count in the status bar", edDoc.editor.markdownWordCount != nil)
+        edDoc.close()
+
+        // Export: self-contained HTML and paginated PDF
+        let exportDir = fm.temporaryDirectory.appendingPathComponent("quire-export-\(UUID().uuidString)")
+        try fm.createDirectory(at: exportDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: exportDir) }
+        let png = NSImage(size: NSSize(width: 4, height: 4), flipped: false) { r in NSColor.red.setFill(); r.fill(); return true }
+        try NSBitmapImageRep(data: png.tiffRepresentation!)!.representation(using: .png, properties: [:])!.write(to: exportDir.appendingPathComponent("dot.png"))
+        let exportSource = """
+            ---
+            title: Export Test
+            author: Quire Self Test
+            ---
+            # Introduction
+
+            Some **bold** text, math $e^{i\\pi} + 1 = 0$ and an image ![dot](dot.png).
+
+            ```swift
+            let answer = 42
+            ```
+
+            ## Diagram
+
+            ```mermaid
+            graph LR
+              A --> B
+            ```
+
+            > [!TIP]
+            > Alerts survive export.
+
+            ## Long section
+
+            """ + (1...60).map { "Paragraph \($0) of filler text so the PDF runs onto several pages." }.joined(separator: "\n\n")
+        let mdURL = exportDir.appendingPathComponent("export-test.md")
+        try exportSource.write(to: mdURL, atomically: true, encoding: .utf8)
+        var exportOptions = MarkdownExportOptions()
+        exportOptions.tableOfContents = true
+        exportOptions.titlePage = true
+        var htmlError: Error?
+        var htmlDone = false
+        let htmlURL = exportDir.appendingPathComponent("out.html")
+        MarkdownExporter(markdown: exportSource, fileURL: mdURL, name: "export-test.md", options: exportOptions)
+            .exportHTML(to: htmlURL) { htmlError = $0; htmlDone = true }
+        Self.wait(60) { htmlDone }
+        let exported = (try? String(contentsOf: htmlURL, encoding: .utf8)) ?? ""
+        check("HTML export finishes", htmlDone && htmlError == nil, "\(String(describing: htmlError))")
+        check("HTML export has no scripts or external links", !exported.isEmpty && !exported.contains("<script") && !exported.contains("<link ")
+              && !exported.contains("file://"), String(exported.prefix(400)))
+        check("HTML export embeds diagram, math, fonts, code, images",
+              exported.contains("<svg") && exported.contains("class=\"katex") && exported.contains("data:font/woff2")
+              && exported.contains("hljs-keyword") && exported.contains("data:image/png;base64,"), "")
+        check("HTML export has title, contents and alert", exported.contains("<title>Export Test</title>") && exported.contains("<nav class=\"toc\">")
+              && exported.contains("markdown-alert-tip") && !exported.contains("class=\"front-matter\""),
+              "title \(exported.contains("<title>Export Test</title>")) toc \(exported.contains("<nav class=\"toc\">")) alert \(exported.contains("markdown-alert-tip")) fm \(exported.contains("front-matter"))")
+        check("HTML export is light only", !exported.contains("prefers-color-scheme: dark"), "")
+
+        var pdfError: Error?
+        var pdfDone = false
+        let pdfURL = exportDir.appendingPathComponent("out.pdf")
+        let printInfo = NSPrintInfo()
+        printInfo.paperSize = NSSize(width: 595, height: 842)   // A4
+        MarkdownExporter(markdown: exportSource, fileURL: mdURL, name: "export-test.md", options: exportOptions)
+            .exportPDF(to: pdfURL, printInfo: printInfo) { pdfError = $0; pdfDone = true }
+        Self.wait(60) { pdfDone }
+        let pdf = PDFDocument(url: pdfURL)
+        let pdfText = pdf?.string ?? ""
+        check("PDF export finishes", pdfDone && pdfError == nil, "\(String(describing: pdfError))")
+        check("PDF export is paginated", (pdf?.pageCount ?? 0) >= 4, "\(pdf?.pageCount ?? 0) pages")
+        check("PDF has the document text", pdfText.contains("Introduction") && pdfText.contains("Paragraph 60"), String(pdfText.prefix(300)))
+        check("PDF title page comes first", pdf?.page(at: 0)?.string?.contains("Quire Self Test") == true
+              && pdf?.page(at: 0)?.string?.contains("Paragraph 1 ") != true, pdf?.page(at: 0)?.string ?? "")
+        check("PDF metadata", (pdf?.documentAttributes?[PDFDocumentAttribute.titleAttribute] as? String) == "Export Test"
+              && (pdf?.documentAttributes?[PDFDocumentAttribute.authorAttribute] as? String) == "Quire Self Test",
+              "\(pdf?.documentAttributes ?? [:])")
+        let pageSize = pdf?.page(at: 1)?.bounds(for: .mediaBox).size ?? .zero
+        check("PDF uses the page setup paper size", abs(pageSize.width - 595) < 2 && abs(pageSize.height - 842) < 2, "\(pageSize)")
+        let numbered = (1..<(pdf?.pageCount ?? 1)).compactMap { pdf?.page(at: $0)?.annotations.first { $0.type == "FreeText" }?.contents }
+        check("PDF has page numbers, not on the title page", pdf?.page(at: 0)?.annotations.contains { $0.type == "FreeText" } == false
+              && numbered.first == "1 / \((pdf?.pageCount ?? 1) - 1)" && numbered.count == (pdf?.pageCount ?? 1) - 1, "\(numbered)")
+
+        // Themes: dark, and light/dark following the reader's system
+        func exportHTML(_ theme: MarkdownExportOptions.Theme) -> String {
+            var o = MarkdownExportOptions()
+            o.theme = theme
+            var finished = false
+            let url = exportDir.appendingPathComponent("theme-\(theme.rawValue).html")
+            MarkdownExporter(markdown: exportSource, fileURL: mdURL, name: "export-test.md", options: o).exportHTML(to: url) { _ in finished = true }
+            Self.wait(60) { finished }
+            return (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+        }
+        let darkPage = exportHTML(.dark)
+        check("HTML export in dark colours", darkPage.contains("content=\"dark\"") && !darkPage.contains("prefers-color-scheme") && darkPage.contains("<svg"), "")
+        let autoPage = exportHTML(.auto)
+        check("HTML export following the reader's system", autoPage.contains("only-light diagram") && autoPage.contains("only-dark diagram")
+              && autoPage.contains("quire-diagram-dark-") && autoPage.contains("prefers-color-scheme: dark"), "")
+
+        // Link addresses printed after links
+        var linkOptions = MarkdownExportOptions()
+        linkOptions.linkAddresses = true
+        var linkDone = false
+        let linkPDF = exportDir.appendingPathComponent("links.pdf")
+        MarkdownExporter(markdown: "See [the site](https://example.com/page).", fileURL: mdURL, name: "links.md", options: linkOptions)
+            .exportPDF(to: linkPDF, printInfo: printInfo) { _ in linkDone = true }
+        Self.wait(60) { linkDone }
+        let linkText = PDFDocument(url: linkPDF)?.string ?? ""
+        check("PDF prints link addresses when asked", linkText.contains("example.com/page"), linkText)
+
+        if let path = ProcessInfo.processInfo.environment["QUIRE_EXPORT_DIR"] {
+            try? fm.copyItem(at: htmlURL, to: URL(fileURLWithPath: path).appendingPathComponent("selftest.html"))
+            try? fm.copyItem(at: pdfURL, to: URL(fileURLWithPath: path).appendingPathComponent("selftest.pdf"))
+        }
+
         // Appearance: Light / Dark / System, applied to the editor and the preview
         if let app = NSApp.delegate as? AppDelegate {
             let saved = Prefs.appearance
@@ -376,6 +777,19 @@ enum SelfTest {
             let result = NSAppleScript(source: source)?.executeAndReturnError(&err).stringValue
             check("AppleScript dictionary works", result == "2|<aa>b <a>|Plain Text|1|hi\n", "\(result ?? "nil") \(err ?? [:])")
             sdoc.stopShell()
+
+            // Export finishes asynchronously: the script returns at once and the file appears later.
+            let (edoc, _) = try makeEditor("# Scripted\n\nExported by **AppleScript**.\n", "script-export.md")
+            NSDocumentController.shared.addDocument(edoc)
+            let out = fm.temporaryDirectory.appendingPathComponent("quire-script-\(UUID().uuidString).pdf")
+            var exportErr: NSDictionary?
+            NSAppleScript(source: "tell application id \"local.quire.editor\" to export document \"script-export.md\" as PDF to POSIX file \"\(out.path)\"")?
+                .executeAndReturnError(&exportErr)
+            var scripted: PDFDocument?
+            Self.wait(60) { scripted = PDFDocument(url: out); return scripted?.string?.contains("AppleScript") == true }
+            check("AppleScript exports PDF", scripted?.string?.contains("Exported by AppleScript") == true, "\(exportErr ?? [:])")
+            try? fm.removeItem(at: out)
+            edoc.close()
         } else {
             print("SKIP AppleScript (not running from the app bundle)")
         }

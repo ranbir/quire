@@ -21,6 +21,9 @@
             <property name="posix path" code="QPth" type="text" access="r" description="The file’s POSIX path, if saved.">
                 <cocoa key="scriptPath"/>
             </property>
+            <responds-to command="export">
+                <cocoa method="handleExportScriptCommand:"/>
+            </responds-to>
         </class-extension>
 
         <command name="replace" code="QuirRepl" description="Replace every occurrence of a string or grep pattern. Returns the number of replacements.">
@@ -57,5 +60,24 @@
             </parameter>
             <result type="text"/>
         </command>
+
+        <command name="export" code="QuirExpt" description="Export a Markdown document as a self-contained HTML file or a PDF, rendered like the preview.">
+            <cocoa class="QuireExportCommand"/>
+            <direct-parameter type="document" optional="yes" description="The document to export; defaults to the front document."/>
+            <parameter name="as" code="Efmt" type="export format" optional="yes" description="HTML (the default) or PDF.">
+                <cocoa key="format"/>
+            </parameter>
+            <parameter name="to" code="Eto " type="file" description="The file to write.">
+                <cocoa key="destination"/>
+            </parameter>
+            <parameter name="with table of contents" code="Etoc" type="boolean" optional="yes">
+                <cocoa key="toc"/>
+            </parameter>
+        </command>
+
+        <enumeration name="export format" code="QExF">
+            <enumerator name="HTML" code="QExH" description="A single self-contained web page."/>
+            <enumerator name="PDF" code="QExP" description="A paginated PDF using the document’s page setup."/>
+        </enumeration>
     </suite>
 </dictionary>
