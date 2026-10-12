@@ -154,7 +154,7 @@ final class Document: NSDocument {
 
     override func close() {
         stopShell()
-        _editor?.preview?.close()
+        _editor?.hidePreview()
         super.close()
     }
 

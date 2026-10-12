@@ -5,6 +5,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let filtersMenu = NSMenu(title: "Text Filters")
     private let clippingsMenu = NSMenu(title: "Clippings")
     private let languageMenu = NSMenu(title: "Language")
+    private let aiModelMenu = NSMenu(title: "Model")
     private var moduleErrors: [String] = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -75,6 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // App
         main.addItem(submenu("Quire", [
             item("About Quire", #selector(showAbout(_:)), target: self),
+            sep(),
+            item("AI Models…", #selector(showAIModels(_:)), ",", target: self),
             sep(),
             item("Open Text Filters Folder", #selector(openFiltersFolder(_:)), target: self),
             item("Open Clippings Folder", #selector(openClippingsFolder(_:)), target: self),
@@ -192,6 +195,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item("Open Text Filters Folder", #selector(openFiltersFolder(_:)), target: self),
         ]))
 
+        // AI
+        main.addItem(submenu("AI", [
+            item("Edit with AI…", #selector(EditorViewController.transformWithAI(_:)), "k"),
+            sep(),
+            submenu("Model", menu: aiModelMenu),
+            item("AI Models…", #selector(showAIModels(_:)), target: self),
+        ]))
+
         // Clippings (rebuilt per language)
         main.addItem(submenu("Clippings", menu: clippingsMenu))
 
@@ -237,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         // View
         main.addItem(submenu("View", [
-            item("Show Preview", #selector(EditorViewController.showPreview(_:)), "p", [.command, .option]),
+            item("Show Preview", #selector(EditorViewController.togglePreview(_:)), "p", [.command, .option]),
             sep(),
             item("Show Line Numbers", #selector(toggleLineNumbers(_:)), target: self),
             item("Soft Wrap Text", #selector(toggleSoftWrap(_:)), "\\", [.command, .option], target: self),
@@ -296,6 +307,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if menu === filtersMenu { rebuildFiltersMenu(menu) }
         else if menu === clippingsMenu { rebuildClippingsMenu(menu) }
         else if menu === languageMenu { rebuildLanguageMenu(menu) }
+        else if menu === aiModelMenu { rebuildAIModelMenu(menu) }
     }
 
     private func rebuildFiltersMenu(_ menu: NSMenu) {
@@ -408,6 +420,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             try LanguageModule(language: lang).encoded().write(to: url)
             documentController.open(url)
         } catch { NSApp.presentError(error) }
+    }
+
+    // MARK: AI
+
+    private func rebuildAIModelMenu(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let list = AIStore.list
+        for p in list.providers {
+            let i = NSMenuItem(title: p.model.isEmpty ? p.name : "\(p.name) · \(p.model)", action: #selector(chooseAIModel(_:)), keyEquivalent: "")
+            i.target = self
+            i.representedObject = p.id
+            i.state = p.id == list.defaultProvider?.id ? .on : .off
+            menu.addItem(i)
+        }
+        if list.providers.isEmpty {
+            menu.addItem(withTitle: "No Models Set Up", action: nil, keyEquivalent: "").isEnabled = false
+        }
+        menu.addItem(.separator())
+        menu.addItem(item("AI Models…", #selector(showAIModels(_:)), target: self))
+    }
+
+    @objc func chooseAIModel(_ sender: NSMenuItem) {
+        var list = AIStore.list
+        list.defaultID = sender.representedObject as? String
+        AIStore.list = list
+    }
+
+    @objc func showAIModels(_ sender: Any?) {
+        AISettingsWindowController.shared.showWindow(nil)
+        AISettingsWindowController.shared.window?.makeKeyAndOrderFront(nil)
     }
 
     // MARK: Text filters & shell
@@ -675,6 +717,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                 case "collapseAll": ed?.collapseAllFolds(nil)
                 case "preview": ed?.showPreview(nil)
+                case "aiModels": self.showAIModels(nil)
+                case "selectAll": ed?.textView.selectAll(nil)
+                case let a where a.hasPrefix("open:"):
+                    self.documentController.openDocument(withContentsOf: URL(fileURLWithPath: String(a.dropFirst(5))), display: true) { _, _, _ in }
+                case let a where a.hasPrefix("aiEdit"):
+                    if let ed { AIEditPanel.show(for: ed, instruction: a.hasPrefix("aiEdit:") ? String(a.dropFirst(7)) : nil) }
                 case "worksheet": self.newWorksheet(nil)
                 case "run": ed?.runWorksheetCommand(nil)
                 case "blame": self.gitBlame(nil)

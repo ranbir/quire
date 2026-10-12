@@ -30,18 +30,21 @@ Requires macOS 13+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
 | Code folding | Fold triangles in the gutter for braces, indentation (Python, YAML), Markdown headings and HTML/XML elements; **View ▸ Folding** folds the selection, collapses the enclosing block, or collapses/expands all. Folded text shows as a clickable `⋯`, and folds follow edits |
 | Completion | `⌥⎋` completes from the document's words and the language's keywords; optional **Auto-Complete as You Type** |
 | Clippings | **Clippings** menu with per-language and Universal snippets from `~/Library/Application Support/Quire/Clippings`. Tokens: `#SELECTION#`, `#INSERTION#`, `#CLIPBOARD#`, `#DATE#`, `#TIME#`, `#FILENAME#`, `#BASENAME#`, and `<#placeholders#>` (`⌃/` jumps to the next one). Inserted clippings match the current indentation |
-| Live preview | `⌥⌘P` opens a live Markdown/HTML preview that updates as you type, keeps its scroll position, resolves relative images and can open in your browser. The built-in Markdown renderer covers headings, lists, task lists, tables, code blocks, links/references, emphasis and raw HTML |
+| Live preview | `⌥⌘P` (or the eye in the status bar) toggles a live Markdown/HTML/code preview pane to the right of the text (drag the divider to resize; the width is remembered). It updates in place as you type, keeps its scroll position, resolves relative images and can open in your browser. The built-in Markdown renderer covers headings, lists, task lists, tables, code blocks, links/references, emphasis and raw HTML. Bundled offline libraries add syntax-highlighted code blocks (highlight.js), math with `$…$`, `$$…$$` or ` ```math ` (KaTeX), and ` ```mermaid ` diagrams such as flowcharts, sequence, class, state, ER and C4 diagrams (Mermaid), all following light/dark mode. See `docs/preview-sample.md` |
 | Shell worksheets | **File ▸ New Shell Worksheet** (or any `.worksheet` file). `⌘↩` runs the current line or selection in a persistent zsh (directory and variables carry over) and inserts the output below; `⌘.` stops it |
 | Git | Gutter bars for added/modified/deleted lines vs `HEAD`, branch in the status bar, and a **Git** menu: Compare with HEAD, Blame, File History, Repository Status/Diff, Stage, Unstage, Discard Changes, Commit |
 | SFTP / SSH | **File ▸ Open from SFTP Server** (`⌃⌘O`) browses a host over `ssh` (keys, agent, `~/.ssh/config`); files are edited locally and uploaded on every save (atomic, keeps permissions). Password and host-key prompts appear as Quire dialogs (Quire acts as its own `SSH_ASKPASS`); passwords are never stored |
 | Language modules | JSON language definitions in `~/Library/Application Support/Quire/Language Modules` add or override languages (a Lua example is installed). **View ▸ Language ▸ Export Current Language as Module** gives a full template; **Reload Language Modules** applies changes |
+| AI models (bring your own) | **Quire ▸ AI Models…** (`⌘,`) adds any number of providers: Anthropic, OpenAI, Google Gemini, OpenRouter, Groq, Mistral, DeepSeek, xAI, Together, Fireworks, or any OpenAI-compatible server — including local ones like Ollama, LM Studio, llama.cpp and vLLM. Each has a base URL, model (**Fetch Models** lists what the server offers), optional extra headers and **Test** button. API keys live in your Keychain; the provider list is plain JSON in `~/Library/Application Support/Quire/AI Providers.json`. Switch the active model from **AI ▸ Model** |
+| AI editing | **AI ▸ Transform Selection…** (`⌘K`) sends the selection (or document) and an instruction to the active model, streams the result into a review sheet, and replaces the text only when you click **Replace** (undoable) |
 | AppleScript | Scripting dictionary: a document's `text`, `selected text`, `source language`, `line count` and `posix path`; commands `replace … with … [in doc] [using grep]`, `select line` and `run worksheet command`, plus the standard suite. Example: `tell application "Quire" to replace "foo" with "bar" in front document` |
 
 ## Layout
 
 ```
-Sources/QuireCore/   pure logic, unit-tested: codec, transforms, search, diff, tokenizer, languages, markdown, folding, git, shell, ssh, modules
+Sources/QuireCore/   pure logic, unit-tested: codec, transforms, search, diff, tokenizer, languages, markdown, folding, git, shell, ssh, modules, AI providers
 Sources/Quire/       AppKit app: documents, editor, projects, folding, preview, Git, SFTP, scripting
+Resources/preview/   preview runtime (quire-preview.js/.css) and bundled Mermaid, KaTeX, highlight.js
 Tests/               XCTest suite for QuireCore
 bin/quire            command-line launcher
 tools/make-icon.swift  generates the app icon
@@ -54,9 +57,9 @@ document dirty state.
 ## Testing
 
 ```sh
-swift test                              # 47 unit tests for QuireCore
-QUIRE_SELFTEST=1 .build/debug/Quire     # AppKit self-test (52 checks)
-open -W --stdout /dev/stdout --env QUIRE_SELFTEST=1 -a build/Quire.app   # inside the bundle, adds AppleScript (55 checks)
+swift test                              # 67 unit tests for QuireCore
+QUIRE_SELFTEST=1 .build/debug/Quire     # AppKit self-test
+open -W --stdout /dev/stdout --env QUIRE_SELFTEST=1 -a build/Quire.app   # inside the bundle, adds AppleScript
 ```
 
 ## Limitations

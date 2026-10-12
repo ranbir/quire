@@ -59,10 +59,12 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, Editor
 
 /// The editor for one document: text view, gutter, status bar, folding,
 /// Git markers, worksheet execution and live preview. Embeddable in any window.
-final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextStorageDelegate, NSMenuDelegate {
+final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextStorageDelegate, NSMenuDelegate, NSSplitViewDelegate {
     weak var doc: Document?
     let textView: EditorTextView
     let scrollView = NSScrollView()
+    /// Holds the text and, when shown, the preview pane on its right.
+    private let splitView = NSSplitView()
     let layoutManager = InvisiblesLayoutManager()
     let folds = FoldManager()
     private(set) var ruler: LineNumberRulerView!
@@ -78,7 +80,7 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
     private let lineEndingPopup = NSPopUpButton(frame: .zero, pullsDown: false)
     private var observers: [NSObjectProtocol] = []
 
-    weak var preview: PreviewWindowController?
+    private(set) var preview: PreviewPane?
     private var analysisWork: DispatchWorkItem?
     private var analysisGeneration = 0
     private var gitRepo: GitRepository?
@@ -198,9 +200,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         previewButton.isBordered = false
         previewButton.image = NSImage(systemSymbolName: "eye", accessibilityDescription: "Preview")
         previewButton.imagePosition = .imageOnly
-        previewButton.toolTip = "Show live preview (⌥⌘P)"
+        previewButton.toolTip = "Show or hide the live preview (⌥⌘P)"
         previewButton.target = self
-        previewButton.action = #selector(showPreview(_:))
+        previewButton.action = #selector(togglePreview(_:))
 
         rebuildLanguagePopup()
         languagePopup.action = #selector(languagePopupChanged(_:))
@@ -224,14 +226,20 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         let right = NSStackView(views: [previewButton, languagePopup, encodingPopup, lineEndingPopup])
         for s in [left, right] { s.spacing = 12; s.translatesAutoresizingMaskIntoConstraints = false; bar.addSubview(s) }
 
-        view.addSubview(scrollView)
+        splitView.isVertical = true
+        splitView.dividerStyle = .thin
+        splitView.delegate = self
+        splitView.translatesAutoresizingMaskIntoConstraints = false
+        splitView.addArrangedSubview(scrollView)
+
+        view.addSubview(splitView)
         view.addSubview(divider)
         view.addSubview(bar)
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: divider.topAnchor),
+            splitView.topAnchor.constraint(equalTo: view.topAnchor),
+            splitView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            splitView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            splitView.bottomAnchor.constraint(equalTo: divider.topAnchor),
             divider.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             divider.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             divider.bottomAnchor.constraint(equalTo: bar.topAnchor),
@@ -547,8 +555,45 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
 
     // MARK: Preview
 
+    private static let previewFractionKey = "PreviewPaneFraction"
+
+    /// Shows the live preview in a pane to the right of the text.
     @objc func showPreview(_ sender: Any?) {
-        PreviewWindowController.show(for: self)
+        if let preview { preview.update(); return }
+        let pane = PreviewPane(editor: self)
+        preview = pane
+        splitView.addArrangedSubview(pane.view)
+        splitView.layoutSubtreeIfNeeded()
+        let saved = UserDefaults.standard.double(forKey: Self.previewFractionKey)
+        let fraction = saved > 0.15 && saved < 0.85 ? saved : 0.5
+        splitView.setPosition(splitView.bounds.width * fraction, ofDividerAt: 0)
+        pane.update()
+    }
+
+    func hidePreview() {
+        guard let preview else { return }
+        preview.view.removeFromSuperview()
+        self.preview = nil
+        view.window?.makeFirstResponder(textView)
+    }
+
+    @objc func togglePreview(_ sender: Any?) {
+        if preview == nil { showPreview(sender) } else { hidePreview() }
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMinCoordinate proposedMinimumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        max(proposedMinimumPosition, 200)
+    }
+
+    func splitView(_ splitView: NSSplitView, constrainMaxCoordinate proposedMaximumPosition: CGFloat, ofSubviewAt dividerIndex: Int) -> CGFloat {
+        min(proposedMaximumPosition, splitView.bounds.width - 200)
+    }
+
+    /// Window resizes keep the preview's share; the text keeps its width when the window is narrow.
+    func splitViewDidResizeSubviews(_ notification: Notification) {
+        guard preview != nil, splitView.bounds.width > 400,
+              (notification.userInfo?["NSSplitViewDividerIndex"]) != nil else { return }
+        UserDefaults.standard.set(scrollView.frame.width / splitView.bounds.width, forKey: Self.previewFractionKey)
     }
 
     // MARK: Document actions forwarded from the responder chain
@@ -639,6 +684,9 @@ final class EditorViewController: NSViewController, NSTextViewDelegate, NSTextSt
         case #selector(saveDocument(_:)), #selector(saveDocumentAs(_:)), #selector(revertDocumentToSaved(_:)),
              #selector(printDocument(_:)), #selector(runPageLayout(_:)):
             return doc?.validateUserInterfaceItem(item) ?? false
+        case #selector(togglePreview(_:)):
+            item.title = preview == nil ? "Show Preview" : "Hide Preview"
+            return true
         case #selector(stopWorksheetCommand(_:)):
             return worksheetInsertion != nil
         case #selector(runWorksheetCommand(_:)):

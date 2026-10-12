@@ -97,6 +97,7 @@ public enum Markdown {
 
         func startsBlock(_ line: String) -> Bool {
             match(Self.atx, line) != nil || match(Self.hr, line) != nil || match(Self.fence, line) != nil
+                || line.trimmingCharacters(in: .whitespaces).hasPrefix("$$")
                 || line.trimmingCharacters(in: .whitespaces).hasPrefix(">") || match(Self.listItem, line) != nil
                 || match(Self.htmlBlock, line) != nil
         }
@@ -121,8 +122,16 @@ public enum Markdown {
                         code.append(dedent(lines[i], fenceIndent))
                         i += 1
                     }
-                    let cls = lang.isEmpty ? "" : " class=\"language-\(escape(lang))\""
-                    out += "<pre><code\(cls)>\(escape(code.joined(separator: "\n")))\(code.isEmpty ? "" : "\n")</code></pre>\n"
+                    let body = escape(code.joined(separator: "\n"))
+                    switch lang.lowercased() {
+                    case "mermaid":
+                        out += "<pre class=\"mermaid\">\(body)</pre>\n"
+                    case "math":
+                        out += "<div class=\"math math-display\">\(body)</div>\n"
+                    default:
+                        let cls = lang.isEmpty ? "" : " class=\"language-\(escape(lang))\""
+                        out += "<pre><code\(cls)>\(body)\(code.isEmpty ? "" : "\n")</code></pre>\n"
+                    }
                     continue
                 }
 
@@ -135,6 +144,12 @@ public enum Markdown {
                     while let last = code.last, isBlank(last) { code.removeLast() }
                     out += "<pre><code>\(escape(code.joined(separator: "\n")))\n</code></pre>\n"
                     continue
+                }
+
+                // Display math between $$ lines
+                if let (tex, next) = displayMath(lines, i) {
+                    out += "<div class=\"math math-display\">\(escape(tex))</div>\n"
+                    i = next; continue
                 }
 
                 // ATX heading
@@ -203,6 +218,29 @@ public enum Markdown {
                 }
             }
             return out
+        }
+
+        /// A `$$ … $$` block starting at line `i` (on one line or spread over several):
+        /// its TeX and the index of the line after it. Nil when there's no closing `$$`.
+        func displayMath(_ lines: [String], _ i: Int) -> (String, Int)? {
+            let first = lines[i].trimmingCharacters(in: .whitespaces)
+            guard first.hasPrefix("$$") else { return nil }
+            let rest = first.dropFirst(2)
+            if rest.count >= 2, rest.hasSuffix("$$") { return (String(rest.dropLast(2)), i + 1) }
+            guard rest.trimmingCharacters(in: .whitespaces).isEmpty || !rest.contains("$$") else { return nil }
+            var tex = rest.isEmpty ? [] : [String(rest)]
+            var j = i + 1
+            while j < lines.count {
+                let t = lines[j].trimmingCharacters(in: .whitespaces)
+                if t.hasSuffix("$$") {
+                    let last = t.dropLast(2)
+                    if !last.isEmpty { tex.append(String(last)) }
+                    return (tex.joined(separator: "\n"), j + 1)
+                }
+                tex.append(lines[j])
+                j += 1
+            }
+            return nil
         }
 
         func paragraphInline(_ lines: [String]) -> String {
@@ -349,7 +387,9 @@ public enum Markdown {
         // MARK: Inline
 
         static let codeSpan = try! NSRegularExpression(pattern: #"(`+)(.+?)(?<!`)\1(?!`)"#, options: .dotMatchesLineSeparators)
-        static let escapeChar = try! NSRegularExpression(pattern: #"\\([\\`*_{}\[\]()#+\-.!|~<>"])"#)
+        static let escapeChar = try! NSRegularExpression(pattern: #"\\([\\`*_{}\[\]()#+\-.!|~<>"$])"#)
+        // $$display$$ or $inline$ (pandoc rules: no space inside the dollars, closing $ not followed by a digit).
+        static let math = try! NSRegularExpression(pattern: #"(?<![\\$])\$\$(.+?)\$\$|(?<![\\$\w])\$(?=[^\s$])((?:\\.|[^$\\])+?)(?<=[^\s\\])\$(?![\d$])"#)
         static let autolink = try! NSRegularExpression(pattern: #"<((?:https?|ftp|mailto):[^\s<>]+|[\w.+-]+@[\w-]+\.[\w.-]+)>"#)
         static let rawTag = try! NSRegularExpression(pattern: #"</?[A-Za-z][A-Za-z0-9-]*(?:\s+[^<>]*)?/?>|<!--.*?-->"#)
         static let image = try! NSRegularExpression(pattern: #"!\[([^\]]*)\]\(\s*<?([^)\s>]*)>?(?:\s+"([^"]*)")?\s*\)"#)
@@ -381,6 +421,10 @@ public enum Markdown {
                 var code = ns.substring(with: m.range(at: 2))
                 if code.hasPrefix(" ") && code.hasSuffix(" ") && code.trimmingCharacters(in: .whitespaces).count > 0 { code = String(code.dropFirst().dropLast()) }
                 return hold("<code>\(escape(code))</code>")
+            }
+            s = replace(Self.math, in: s) { m, ns in
+                if let display = g(m, 1, ns) { return hold("<span class=\"math math-display\">\(escape(display))</span>") }
+                return hold("<span class=\"math math-inline\">\(escape(g(m, 2, ns) ?? ""))</span>")
             }
             s = replace(Self.escapeChar, in: s) { m, ns in hold(escape(ns.substring(with: m.range(at: 1)))) }
             s = replace(Self.autolink, in: s) { m, ns in
@@ -430,9 +474,22 @@ public enum Markdown {
         }
     }
 
-    /// Wraps rendered HTML in a full page with a readable stylesheet.
-    public static func page(body: String, title: String, baseURL: URL? = nil) -> String {
+    /// Wraps rendered HTML in a full page with a readable stylesheet. `assets` is the folder
+    /// holding quire-preview.js and its libraries (highlighting, math, diagrams).
+    public static func page(body: String, title: String, baseURL: URL? = nil, assets: URL? = nil) -> String {
         let base = baseURL.map { "<base href=\"\(escape($0.absoluteString))\">" } ?? ""
+        let scripts = assets.map { dir -> String in
+            func url(_ path: String) -> String { escape(dir.appendingPathComponent(path).absoluteString) }
+            return """
+            <link rel="stylesheet" href="\(url("hljs/github.min.css"))" media="(prefers-color-scheme: light)">
+            <link rel="stylesheet" href="\(url("hljs/github-dark.min.css"))" media="(prefers-color-scheme: dark)">
+            <link rel="stylesheet" href="\(url("katex/katex.min.css"))">
+            <link rel="stylesheet" href="\(url("quire-preview.css"))">
+            <script defer src="\(url("hljs/highlight.min.js"))"></script>
+            <script defer src="\(url("hljs/extra-languages.min.js"))"></script>
+            <script defer src="\(url("quire-preview.js"))"></script>
+            """
+        } ?? ""
         return """
         <!doctype html><html><head><meta charset="utf-8">\(base)<title>\(escape(title))</title>
         <meta name="color-scheme" content="light dark">
@@ -451,7 +508,8 @@ public enum Markdown {
         table { border-collapse: collapse; margin: 1em 0; } th, td { border: 1px solid var(--border); padding: 6px 12px; }
         th { background: var(--code); } img { max-width: 100%; } hr { border: 0; border-top: 1px solid var(--border); margin: 2em 0; }
         li > input[type=checkbox] { margin-right: .4em; }
-        </style></head><body>
+        </style>
+        \(scripts)</head><body>
         \(body)
         </body></html>
         """

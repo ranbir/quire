@@ -45,6 +45,34 @@ final class MarkdownTests: XCTestCase {
         XCTAssertTrue(html.contains("<div class=\"x\">\nhi\n</div>"), html)
         XCTAssertTrue(html.contains("a &lt; b &amp; <span>c</span>"), html)
     }
+
+    func testMermaidAndMathFences() {
+        let html = Markdown.html("```mermaid\ngraph LR\n  A --> B\n```\n\n```math\na < b\n```\n")
+        XCTAssertTrue(html.contains("<pre class=\"mermaid\">graph LR\n  A --&gt; B</pre>"), html)
+        XCTAssertTrue(html.contains("<div class=\"math math-display\">a &lt; b</div>"), html)
+    }
+
+    func testDisplayMathBlocks() {
+        let html = Markdown.html("Text\n$$\nx_1 * y_2\n$$\n\n$$ e^{i\\pi} $$\n\n$$ unclosed\n")
+        XCTAssertTrue(html.contains("<p>Text</p>\n<div class=\"math math-display\">x_1 * y_2</div>"), html)
+        XCTAssertTrue(html.contains("<div class=\"math math-display\"> e^{i\\pi} </div>"), html)
+        XCTAssertTrue(html.contains("<p>$$ unclosed</p>"), html)
+    }
+
+    func testInlineMath() {
+        let html = Markdown.html("Let $a_1 * b_2$ and $$\\sum_i x_i$$ hold; costs $5 or $6, \\$x\\$ and `$c$`.")
+        XCTAssertTrue(html.contains("<span class=\"math math-inline\">a_1 * b_2</span>"), html)
+        XCTAssertTrue(html.contains("<span class=\"math math-display\">\\sum_i x_i</span>"), html)
+        XCTAssertTrue(html.contains("costs $5 or $6, $x$ and <code>$c$</code>."), html)
+    }
+
+    func testPageLinksPreviewAssets() {
+        let dir = URL(fileURLWithPath: "/tmp/preview assets")
+        let page = Markdown.page(body: "<p>x</p>", title: "t", assets: dir)
+        XCTAssertTrue(page.contains("<script defer src=\"file:///tmp/preview%20assets/quire-preview.js\"></script>"), page)
+        XCTAssertTrue(page.contains("hljs/github-dark.min.css\" media=\"(prefers-color-scheme: dark)\""), page)
+        XCTAssertFalse(Markdown.page(body: "", title: "t").contains("<script"))
+    }
 }
 
 final class CompletionAndClippingTests: XCTestCase {

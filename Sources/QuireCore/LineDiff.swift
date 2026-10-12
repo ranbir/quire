@@ -88,3 +88,27 @@ public enum LineDiff {
         return out
     }
 }
+
+extension LineDiff {
+    public enum LineKind: Equatable { case inserted, deleted }
+
+    /// Old and new interleaved as one text (deleted lines before their replacements),
+    /// with the UTF-16 range of every changed line, for an inline "changes" view.
+    public static func interleaved(old: String, new: String) -> (text: String, changes: [(range: NSRange, kind: LineKind)]) {
+        var text = "", changes: [(NSRange, LineKind)] = []
+        var location = 0
+        for op in ops(old: lines(old), new: lines(new)) {
+            let line: String, kind: LineKind?
+            switch op {
+            case .equal(let l): line = l; kind = nil
+            case .delete(let l): line = l; kind = .deleted
+            case .insert(let l): line = l; kind = .inserted
+            }
+            let length = (line as NSString).length + 1
+            text += line + "\n"
+            if let kind { changes.append((NSRange(location: location, length: length), kind)) }
+            location += length
+        }
+        return (text, changes)
+    }
+}

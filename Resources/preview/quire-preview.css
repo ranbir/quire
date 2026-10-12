@@ -1,0 +1,38 @@
+/* Styles for highlighted code, math and diagrams in the Quire preview. */
+
+body > :first-child { margin-top: 0; }
+pre { position: relative; }
+pre code.hljs { background: transparent; padding: 0; }
+
+pre[data-lang]:not([data-lang=""])::before {
+    content: attr(data-lang);
+    position: absolute; top: 6px; right: 12px;
+    font: 11px/1 -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--muted); text-transform: lowercase; letter-spacing: .02em;
+    transition: opacity .15s;
+}
+pre .copy {
+    position: absolute; top: 6px; right: 8px;
+    font: 11px -apple-system, BlinkMacSystemFont, sans-serif;
+    color: var(--fg); background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: 3px 8px; cursor: pointer; opacity: 0;
+    transition: opacity .15s;
+}
+pre:hover .copy { opacity: 1; }
+pre:hover::before { opacity: 0; }
+
+/* Math */
+.math-display { display: block; margin: 1.2em 0; overflow-x: auto; overflow-y: hidden; text-align: center; }
+.math-error { color: #d1242f; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Diagrams */
+pre.mermaid { color: var(--muted); }
+figure.diagram {
+    margin: 1.4em 0; padding: 20px; text-align: center; overflow-x: auto;
+    border: 1px solid var(--border); border-radius: 10px; background: var(--bg);
+}
+figure.diagram svg { max-width: 100%; height: auto; }
+figure.diagram .edgeLabel, figure.diagram .edgeLabel rect { font-size: 12px; }
+figure.diagram-error { text-align: left; border-color: #d1242f80; }
+.diagram-error-message { color: #d1242f; font-size: 13px; margin-bottom: 10px; white-space: pre-wrap; }
+figure.diagram-error pre { margin: 0; font: 0.88em/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; }

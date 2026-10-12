@@ -8,9 +8,10 @@ extension Notification.Name {
 
 /// Global editor preferences, persisted in UserDefaults.
 enum Prefs {
-    /// ~/Library/Application Support/Quire
+    /// ~/Library/Application Support/Quire, or $QUIRE_SUPPORT_DIR for test runs.
     static var supportFolder: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Quire")
+        if let dir = ProcessInfo.processInfo.environment["QUIRE_SUPPORT_DIR"] { return URL(fileURLWithPath: dir) }
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Quire")
     }
 
     private static let d = UserDefaults.standard

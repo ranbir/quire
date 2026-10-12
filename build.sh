@@ -1,7 +1,8 @@
 #!/bin/sh
 # Builds Quire.app into ./build.
 #
-#   ./build.sh            ad-hoc signed app for local use
+#   ./build.sh            app for local use (signed with your Developer ID or
+#                         Apple Development identity if present, else ad-hoc)
 #   ./build.sh --install  also copy to /Applications and link the `quire` command
 #   ./build.sh --release  Developer ID signed, notarized and stapled app + .dmg
 #
@@ -24,6 +25,7 @@ cp "$BIN" "$APP/Contents/MacOS/Quire"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp README.md "$APP/Contents/Resources/README.md"
 cp Resources/Quire.sdef "$APP/Contents/Resources/Quire.sdef"
+cp -R Resources/preview "$APP/Contents/Resources/preview"
 cp bin/quire "$APP/Contents/SharedSupport/bin/quire"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
@@ -37,7 +39,7 @@ if [ "$1" = "--release" ]; then
     VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
     echo "Signing with: $SIGN_ID"
     codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP/Contents/SharedSupport/bin/quire"
-    codesign --force --options runtime --timestamp --sign "$SIGN_ID" "$APP"
+    codesign --force --options runtime --timestamp --entitlements Resources/Quire.entitlements --sign "$SIGN_ID" "$APP"
     codesign --verify --strict --verbose=2 "$APP"
 
     # Disk image with a drag-to-Applications layout
@@ -61,7 +63,21 @@ if [ "$1" = "--release" ]; then
     exit 0
 fi
 
-codesign --force --sign - "$APP" >/dev/null
+# Local builds: sign with a stable identity when one is available so macOS
+# remembers Keychain and microphone permissions across rebuilds (ad-hoc
+# signatures change every build). LOCAL_SIGN_ID=- forces ad-hoc.
+if [ -z "$LOCAL_SIGN_ID" ]; then
+    IDS=$(security find-identity -v -p codesigning 2>/dev/null)
+    LOCAL_SIGN_ID=$(printf '%s\n' "$IDS" | sed -n 's/.*"\(Developer ID Application:[^"]*\)".*/\1/p' | head -1)
+    [ -n "$LOCAL_SIGN_ID" ] || LOCAL_SIGN_ID=$(printf '%s\n' "$IDS" | sed -n 's/.*"\(Apple Development:[^"]*\)".*/\1/p' | head -1)
+fi
+if [ -n "$LOCAL_SIGN_ID" ] && [ "$LOCAL_SIGN_ID" != "-" ]; then
+    codesign --force --sign "$LOCAL_SIGN_ID" "$APP/Contents/SharedSupport/bin/quire"
+    codesign --force --sign "$LOCAL_SIGN_ID" "$APP"
+    echo "Signed with: $LOCAL_SIGN_ID"
+else
+    codesign --force --sign - "$APP" >/dev/null
+fi
 echo "Built $APP"
 
 if [ "$1" = "--install" ]; then

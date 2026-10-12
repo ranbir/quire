@@ -262,6 +262,50 @@ enum SelfTest {
         check("Lua module available", Languages.named("Lua").name == "Lua")
         check("Lua tokenizes", Tokenizer(language: Languages.named("Lua")).tokenize("local x = \"s\" -- c").map(\.kind) == [.keyword, .string, .comment])
 
+        // Preview renders code, math and diagrams with the bundled libraries
+        check("preview assets found", PreviewPane.assets != nil)
+        let (mdoc, _) = try makeEditor("# T\n\n```swift\nlet x = 1\n```\n\n$e^x$\n\n```mermaid\ngraph LR\n  A --> B\n```\n\n```mermaid\nnot a diagram\n```\n", "preview-test.md")
+        mdoc.editor.showPreview(nil)
+        // Poll the page until both diagram blocks have become figures.
+        var html = ""
+        var asking = false
+        let previewDone = Self.wait(20) {
+            if !asking, let preview = mdoc.editor.preview {
+                asking = true
+                preview.whenRendered { html = $0 ?? ""; asking = false }
+            }
+            return html.components(separatedBy: "<figure").count == 3
+        }
+        check("preview highlights code", html.contains("hljs-keyword"), html)
+        check("preview renders math", html.contains("class=\"katex\""), html)
+        check("preview renders diagrams", previewDone && html.contains("<svg") && html.contains("figure class=\"diagram\""), html)
+        check("preview shows diagram errors", html.contains("diagram-error-message"), html)
+        // The pane must actually paint: the snapshot has to contain more than the background.
+        var image: NSImage?
+        var snapped = false
+        mdoc.editor.preview?.snapshot { image = $0; snapped = true }
+        Self.wait(5) { snapped }
+        let colours = image.flatMap { $0.tiffRepresentation }.flatMap(NSBitmapImageRep.init(data:)).map { rep -> Int in
+            var seen = Set<UInt32>()
+            for x in stride(from: 0, to: rep.pixelsWide, by: 7) {
+                for y in stride(from: 0, to: rep.pixelsHigh, by: 7) {
+                    guard let c = rep.colorAt(x: x, y: y)?.usingColorSpace(.sRGB) else { continue }
+                    seen.insert(UInt32(c.redComponent * 255) << 16 | UInt32(c.greenComponent * 255) << 8 | UInt32(c.blueComponent * 255))
+                }
+            }
+            return seen.count
+        } ?? 0
+        if let path = ProcessInfo.processInfo.environment["QUIRE_PREVIEW_PNG"], let tiff = image?.tiffRepresentation {
+            try? NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: path))
+        }
+        check("preview pane paints its page", colours > 20, "\(colours) colours, size \(image?.size ?? .zero)")
+        let pane = mdoc.editor.preview?.view
+        check("preview is a pane beside the text", pane?.superview != nil && pane?.window === mdoc.editor.textView.window
+              && (pane?.frame.minX ?? 0) > mdoc.editor.scrollView.frame.maxX - 1, "\(pane?.frame ?? .zero)")
+        mdoc.editor.togglePreview(nil)
+        check("preview pane hides", mdoc.editor.preview == nil && pane?.superview == nil)
+        mdoc.close()
+
         // SSH askpass wiring
         check("ssh uses our askpass", RemoteFiles.client.environment["SSH_ASKPASS"] == Bundle.main.executablePath)
 

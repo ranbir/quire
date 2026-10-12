@@ -2,26 +2,34 @@ import AppKit
 import WebKit
 import QuireCore
 
-/// Live HTML / Markdown preview that follows the editor as you type,
-/// keeping its scroll position across refreshes.
-final class PreviewWindowController: NSWindowController, NSWindowDelegate, WKNavigationDelegate {
-    private static var open: [PreviewWindowController] = []
+/// Live HTML / Markdown / code preview shown in a pane beside the editor. It follows
+/// the editor as you type, keeping its scroll position across refreshes.
+final class PreviewPane: NSViewController, WKNavigationDelegate {
     private weak var editor: EditorViewController?
     private let webView: WKWebView
     private var pending: DispatchWorkItem?
     private var savedScroll: CGFloat = 0
     private let tempFile: URL
+    /// Identifies the page currently loaded; while it matches, updates swap the body in place.
+    private var loadedShell: String?
+    private var pendingShell: String?
 
-    static func show(for editor: EditorViewController) {
-        if let existing = editor.preview { existing.showWindow(nil); existing.update(); return }
-        let wc = PreviewWindowController(editor: editor)
-        open.append(wc)
-        editor.preview = wc
-        wc.showWindow(nil)
-        wc.update()
-    }
+    /// Highlighting, math and diagram libraries: in the app bundle, or in the source tree when
+    /// running from `swift build`.
+    static let assets: URL? = {
+        let candidates = [Bundle.main.resourceURL?.appendingPathComponent("preview"),
+                          URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+                            .appendingPathComponent("../../Resources/preview").standardized]
+        return candidates.compactMap { $0 }.first {
+            FileManager.default.fileExists(atPath: $0.appendingPathComponent("quire-preview.js").path)
+        }
+    }()
 
-    private init(editor: EditorViewController) {
+    /// highlight.js names for Quire languages whose lowercased name doesn't match.
+    private static let highlightNames = ["C++": "cpp", "Objective-C": "objectivec", "Shell Script": "bash",
+                                         "INI / Config": "ini", "Plain Text": ""]
+
+    init(editor: EditorViewController) {
         self.editor = editor
         let config = WKWebViewConfiguration()
         config.preferences.isElementFullscreenEnabled = false
@@ -29,34 +37,61 @@ final class PreviewWindowController: NSWindowController, NSWindowDelegate, WKNav
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Quire/Preview")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         tempFile = dir.appendingPathComponent("\(UUID().uuidString).html")
-
-        let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 720, height: 760),
-                         styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
-        super.init(window: w)
-        w.delegate = self
-        w.contentView = webView
-        webView.navigationDelegate = self
-        w.setFrameAutosaveName("QuirePreview")
-        if let editorWindow = editor.view.window, !w.setFrameUsingName("QuirePreview") {
-            w.setFrameTopLeftPoint(NSPoint(x: editorWindow.frame.maxX + 8, y: editorWindow.frame.maxY))
-        }
-        updateTitle()
-
-        let open = NSButton(title: "Open in Browser", target: self, action: #selector(openInBrowser(_:)))
-        open.bezelStyle = .rounded
-        open.controlSize = .small
-        let accessory = NSTitlebarAccessoryViewController()
-        accessory.view = NSView(frame: NSRect(x: 0, y: 0, width: 130, height: 28))
-        open.frame = NSRect(x: 0, y: 2, width: 122, height: 24)
-        accessory.view.addSubview(open)
-        accessory.layoutAttribute = .trailing
-        w.addTitlebarAccessoryViewController(accessory)
+        super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) { fatalError() }
 
-    private func updateTitle() {
-        window?.title = "Preview — \(editor?.displayName ?? "")"
+    deinit { try? FileManager.default.removeItem(at: tempFile) }
+
+    override func loadView() {
+        view = NSView(frame: NSRect(x: 0, y: 0, width: 420, height: 600))
+        webView.navigationDelegate = self
+        webView.translatesAutoresizingMaskIntoConstraints = false
+
+        // Header: title, Open in Browser, close
+        let header = NSView()
+        header.translatesAutoresizingMaskIntoConstraints = false
+        let title = NSTextField(labelWithString: "Preview")
+        title.font = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
+        title.textColor = .secondaryLabelColor
+        func button(_ symbol: String, _ tip: String, _ action: Selector) -> NSButton {
+            let b = NSButton(image: NSImage(systemSymbolName: symbol, accessibilityDescription: tip)!, target: nil, action: action)
+            b.bezelStyle = .inline
+            b.isBordered = false
+            b.toolTip = tip
+            return b
+        }
+        let browser = button("safari", "Open in Browser", #selector(openInBrowser(_:)))
+        browser.target = self
+        let close = button("xmark", "Hide Preview (⌥⌘P)", #selector(EditorViewController.togglePreview(_:)))
+        close.target = editor
+        let buttons = NSStackView(views: [browser, close])
+        buttons.spacing = 10
+        for v in [title, buttons] as [NSView] { v.translatesAutoresizingMaskIntoConstraints = false; header.addSubview(v) }
+        let divider = NSBox(); divider.boxType = .separator
+        divider.translatesAutoresizingMaskIntoConstraints = false
+
+        view.addSubview(header)
+        view.addSubview(divider)
+        view.addSubview(webView)
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: view.topAnchor),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            header.heightAnchor.constraint(equalToConstant: 24),
+            title.leadingAnchor.constraint(equalTo: header.leadingAnchor, constant: 10),
+            title.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            buttons.trailingAnchor.constraint(equalTo: header.trailingAnchor, constant: -8),
+            buttons.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            divider.topAnchor.constraint(equalTo: header.bottomAnchor),
+            divider.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            divider.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.topAnchor.constraint(equalTo: divider.bottomAnchor),
+            webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            webView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
     }
 
     func scheduleUpdate() {
@@ -66,42 +101,84 @@ final class PreviewWindowController: NSWindowController, NSWindowDelegate, WKNav
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3, execute: item)
     }
 
-    /// Builds the page for the editor's current text.
-    private func renderHTML() -> String {
-        guard let editor else { return "" }
+    /// The preview of the editor's current text: a full page, plus (for Markdown and code,
+    /// which share one page template) the body and a key for the page it can be swapped into.
+    private struct Rendered { var page: String; var body: String? = nil; var shell: String? = nil }
+
+    private func render() -> Rendered {
+        guard let editor else { return Rendered(page: "") }
         let text = editor.textView.string
         let base = editor.doc?.fileURL?.deletingLastPathComponent()
-        switch editor.textView.language.name {
+        let language = editor.textView.language.name
+        let body: String
+        switch language {
         case "HTML":
-            guard let base else { return text }
+            guard let base else { return Rendered(page: text) }
             // Resolve relative links against the document's folder.
             let tag = "<base href=\"\(Markdown.escape(base.absoluteString))\">"
             if let r = text.range(of: "<head[^>]*>", options: [.regularExpression, .caseInsensitive]) {
-                return text.replacingCharacters(in: r, with: text[r] + tag)
+                return Rendered(page: text.replacingCharacters(in: r, with: text[r] + tag))
             }
-            return tag + text
+            return Rendered(page: tag + text)
         case "Markdown":
-            return Markdown.page(body: Markdown.html(text), title: editor.displayName, baseURL: base)
+            body = Markdown.html(text)
         default:
-            return Markdown.page(body: "<pre><code>\(Markdown.escape(text))</code></pre>", title: editor.displayName, baseURL: base)
+            let name = Self.highlightNames[language] ?? language.lowercased()
+            let cls = name.isEmpty ? "" : " class=\"language-\(Markdown.escape(name))\""
+            body = "<pre class=\"source\"><code\(cls)>\(Markdown.escape(text))</code></pre>"
         }
+        let page = Markdown.page(body: body, title: editor.displayName, baseURL: base, assets: Self.assets)
+        let shell = Self.assets == nil ? nil : "\(base?.path ?? "")\u{0}\(editor.displayName)"
+        return Rendered(page: page, body: body, shell: shell)
     }
 
+    private func renderHTML() -> String { render().page }
+
     func update() {
-        guard editor != nil else { close(); return }
-        updateTitle()
-        let html = renderHTML()
+        guard editor != nil else { return }
+        let rendered = render()
+        if let body = rendered.body, let shell = rendered.shell, shell == loadedShell {
+            // Same page template: swap the body in place, keeping scroll and rendered diagrams.
+            webView.callAsyncJavaScript("await quireUpdate(html)", arguments: ["html": body], in: nil, in: .page) { [weak self] result in
+                if case .failure = result { self?.loadedShell = nil; self?.load(rendered) }
+            }
+            return
+        }
+        load(rendered)
+    }
+
+    private func load(_ rendered: Rendered) {
         webView.evaluateJavaScript("window.scrollY") { [weak self] y, _ in
             guard let self else { return }
             if let y = y as? CGFloat { self.savedScroll = y }
-            try? Data(html.utf8).write(to: self.tempFile)
+            try? Data(rendered.page.utf8).write(to: self.tempFile)
+            self.loadedShell = nil
+            self.pendingShell = rendered.shell
             // Read access to "/" lets relative images and stylesheets load from the document's folder.
             self.webView.loadFileURL(self.tempFile, allowingReadAccessTo: URL(fileURLWithPath: "/"))
         }
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        webView.evaluateJavaScript("window.scrollTo(0, \(savedScroll))")
+        loadedShell = pendingShell
+        // Restore the scroll position now and again once diagrams and math have laid out.
+        webView.evaluateJavaScript("""
+            window.scrollTo(0, \(savedScroll));
+            window.quireReady && window.quireReady.then(() => window.scrollTo(0, \(savedScroll)));
+            """)
+    }
+
+    /// What the pane currently shows, as drawn by WebKit (for tests).
+    func snapshot(_ done: @escaping (NSImage?) -> Void) {
+        webView.takeSnapshot(with: nil) { image, _ in done(image) }
+    }
+
+    /// Resolves once highlighting, math and diagrams on the current page have rendered (for tests).
+    func whenRendered(_ done: @escaping (String?) -> Void) {
+        webView.callAsyncJavaScript("""
+            if (window.quireReady) await window.quireReady;
+            return document.body.innerHTML;
+            """, arguments: [:], in: nil, in: .page) { done(try? $0.get() as? String) }
     }
 
     /// Links open in the default browser instead of replacing the preview.
@@ -120,12 +197,6 @@ final class PreviewWindowController: NSWindowController, NSWindowDelegate, WKNav
         let url = tempFile.deletingLastPathComponent().appendingPathComponent("\(UUID().uuidString).html")
         try? Data(renderHTML().utf8).write(to: url)
         NSWorkspace.shared.open(url)
-    }
-
-    func windowWillClose(_ notification: Notification) {
-        try? FileManager.default.removeItem(at: tempFile)
-        if editor?.preview === self { editor?.preview = nil }
-        Self.open.removeAll { $0 === self }
     }
 }
 

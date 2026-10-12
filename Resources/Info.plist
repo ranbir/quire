@@ -2,56 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key>
-	<string>Quire</string>
 	<key>CFBundleDisplayName</key>
 	<string>Quire</string>
-	<key>CFBundleIdentifier</key>
-	<string>local.quire.editor</string>
-	<key>CFBundleExecutable</key>
-	<string>Quire</string>
-	<key>CFBundleIconFile</key>
-	<string>Quire</string>
-	<key>CFBundlePackageType</key>
-	<string>APPL</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.0</string>
-	<key>CFBundleVersion</key>
-	<string>1</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>13.0</string>
-	<key>LSApplicationCategoryType</key>
-	<string>public.app-category.developer-tools</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSSupportsAutomaticTermination</key>
-	<false/>
-	<key>NSHumanReadableCopyright</key>
-	<string>Quire text editor.</string>
-	<key>NSAppleScriptEnabled</key>
-	<true/>
-	<key>OSAScriptingDefinition</key>
-	<string>Quire.sdef</string>
-	<key>UTExportedTypeDeclarations</key>
-	<array>
-		<dict>
-			<key>UTTypeIdentifier</key>
-			<string>local.quire.project</string>
-			<key>UTTypeDescription</key>
-			<string>Quire Project</string>
-			<key>UTTypeConformsTo</key>
-			<array>
-				<string>public.json</string>
-			</array>
-			<key>UTTypeTagSpecification</key>
-			<dict>
-				<key>public.filename-extension</key>
-				<array>
-					<string>quireproject</string>
-				</array>
-			</dict>
-		</dict>
-	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -61,12 +13,12 @@
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Owner</string>
-			<key>NSDocumentClass</key>
-			<string>QuireProjectDocument</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>local.quire.project</string>
 			</array>
+			<key>NSDocumentClass</key>
+			<string>QuireProjectDocument</string>
 		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
@@ -75,8 +27,6 @@
 			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
-			<key>NSDocumentClass</key>
-			<string>QuireDocument</string>
 			<key>LSItemContentTypes</key>
 			<array>
 				<string>public.plain-text</string>
@@ -85,6 +35,8 @@
 				<string>public.script</string>
 				<string>public.data</string>
 			</array>
+			<key>NSDocumentClass</key>
+			<string>QuireDocument</string>
 		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
@@ -97,6 +49,58 @@
 			<array>
 				<string>public.folder</string>
 			</array>
+		</dict>
+	</array>
+	<key>CFBundleExecutable</key>
+	<string>Quire</string>
+	<key>CFBundleIconFile</key>
+	<string>Quire</string>
+	<key>CFBundleIdentifier</key>
+	<string>local.quire.editor</string>
+	<key>CFBundleName</key>
+	<string>Quire</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.1</string>
+	<key>CFBundleVersion</key>
+	<string>2</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.developer-tools</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>13.0</string>
+	<key>NSAppleScriptEnabled</key>
+	<true/>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSHumanReadableCopyright</key>
+	<string>Quire text editor.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Quire uses the microphone when you dictate an instruction for Edit with AI.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Quire turns your spoken instruction for Edit with AI into text. Where your Mac supports it, this happens on the device.</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<false/>
+	<key>OSAScriptingDefinition</key>
+	<string>Quire.sdef</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.json</string>
+			</array>
+			<key>UTTypeDescription</key>
+			<string>Quire Project</string>
+			<key>UTTypeIdentifier</key>
+			<string>local.quire.project</string>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>quireproject</string>
+				</array>
+			</dict>
 		</dict>
 	</array>
 </dict>
