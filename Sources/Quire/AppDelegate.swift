@@ -633,7 +633,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func showAbout(_ sender: Any?) {
         let credits = NSAttributedString(
-            string: "A fast plain-text and code editor for macOS.",
+            string: "A fast plain-text and code editor for macOS.\n\nDeveloper: Ranbir Mazumdar",
             attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }
