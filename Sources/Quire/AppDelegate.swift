@@ -771,7 +771,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func showAbout(_ sender: Any?) {
         let credits = NSAttributedString(
-            string: "A fast plain-text and code editor for macOS.\n\nDeveloper: Ranbir Mazumdar\n\nIncludes cmark-gfm (BSD), KaTeX (MIT), Mermaid (MIT) and highlight.js (BSD). Licences are in Quire.app/Contents/Resources.",
+            string: "A fast plain-text and code editor for macOS.\n\nDeveloper: Ranbir Mazumdar\n\nIncludes cmark-gfm (BSD), KaTeX (MIT), Mermaid (MIT), D2 (MPL 2.0), Graphviz (EPL 2.0), ELK (EPL 2.0) and highlight.js (BSD). Licences are in Quire.app/Contents/Resources.",
             attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
         NSApp.orderFrontStandardAboutPanel(options: [.credits: credits])
     }

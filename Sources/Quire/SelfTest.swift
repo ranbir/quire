@@ -265,9 +265,9 @@ enum SelfTest {
 
         // Preview renders code, math and diagrams with the bundled libraries
         check("preview assets found", PreviewPane.assets != nil)
-        let (mdoc, _) = try makeEditor("# T\n\n```swift\nlet x = 1\n```\n\n$e^x$\n\n```mermaid\ngraph LR\n  A --> B\n```\n\n```mermaid\nnot a diagram\n```\n", "preview-test.md")
+        let (mdoc, _) = try makeEditor("# T\n\n```swift\nlet x = 1\n```\n\n$e^x$\n\n```mermaid\ngraph LR\n  A --> B\n```\n\n```mermaid\nnot a diagram\n```\n\n```d2\nx -> y: hi\n```\n\n```dot\ndigraph { p -> q }\n```\n", "preview-test.md")
         mdoc.editor.showPreview(nil)
-        // Poll the page until both diagram blocks have become figures.
+        // Poll the page until all four diagram blocks have become figures.
         var html = ""
         var asking = false
         let previewDone = Self.wait(20) {
@@ -275,12 +275,14 @@ enum SelfTest {
                 asking = true
                 preview.whenRendered { html = $0 ?? ""; asking = false }
             }
-            return html.components(separatedBy: "<figure").count == 3
+            return html.components(separatedBy: "<figure").count == 5
         }
         check("preview highlights code", html.contains("hljs-keyword"), html)
         check("preview renders math", html.contains("class=\"katex\""), html)
         check("preview renders diagrams", previewDone && html.contains("<svg") && html.contains("figure class=\"diagram\""), html)
         check("preview shows diagram errors", html.contains("diagram-error-message"), html)
+        check("preview renders D2", html.contains("data-engine=\"d2\"") && html.contains("d2-svg"), html)
+        check("preview renders Graphviz", html.contains("data-engine=\"graphviz\"") && html.contains("class=\"graph\""), html)
         // The pane must actually paint: the snapshot has to contain more than the background.
         var image: NSImage?
         var snapped = false
@@ -508,16 +510,16 @@ enum SelfTest {
         defer { try? fm.removeItem(at: wDir) }
         let wpng = NSImage(size: NSSize(width: 60, height: 30), flipped: false) { r in NSColor.orange.setFill(); r.fill(); return true }
         try NSBitmapImageRep(data: wpng.tiffRepresentation!)!.representation(using: .png, properties: [:])!.write(to: wDir.appendingPathComponent("w.png"))
-        let (wDoc, wtv) = try makeEditor("Math $a^2$ here.\n\n```mermaid\ngraph LR\n  A --> B\n```\n\n![pic](w.png)\n\nend", "widgets.md")
+        let (wDoc, wtv) = try makeEditor("Math $a^2$ here.\n\n```mermaid\ngraph LR\n  A --> B\n```\n\n```d2\nx -> y\n```\n\n```graphviz\ndigraph { p -> q }\n```\n\n![pic](w.png)\n\nend", "widgets.md")
         wDoc.fileURL = wDir.appendingPathComponent("widgets.md")
         wDoc.editor.markdownMode = .live
         wtv.setSelectedRange(NSRange(location: (wtv.string as NSString).length, length: 0))
         wDoc.editor.markdownStyler.updateLive(selection: wtv.selectedRange())
         func widgetCount() -> Int { wDoc.editor.folds.markup.filter { if case .widget = $0.style { return true }; return false }.count }
-        Self.wait(30) { widgetCount() == 3 }
-        check("live: math, diagram and image become pictures", widgetCount() == 3, "\(wDoc.editor.folds.markup.map(\.style))")
+        Self.wait(30) { widgetCount() == 5 }
+        check("live: math, diagrams and image become pictures", widgetCount() == 5, "\(wDoc.editor.folds.markup.map(\.style))")
         wtv.setSelectedRange(NSRange(location: 2, length: 0))
-        check("live: a picture turns back into source at the cursor", widgetCount() == 2)
+        check("live: a picture turns back into source at the cursor", widgetCount() == 4)
         wDoc.close()
 
         // Tables: Tab formats and moves to the next cell
@@ -622,6 +624,10 @@ enum SelfTest {
               A --> B
             ```
 
+            ```d2
+            source -> export
+            ```
+
             > [!TIP]
             > Alerts survive export.
 
@@ -644,7 +650,7 @@ enum SelfTest {
         check("HTML export has no scripts or external links", !exported.isEmpty && !exported.contains("<script") && !exported.contains("<link ")
               && !exported.contains("file://"), String(exported.prefix(400)))
         check("HTML export embeds diagram, math, fonts, code, images",
-              exported.contains("<svg") && exported.contains("class=\"katex") && exported.contains("data:font/woff2")
+              exported.contains("<svg") && exported.contains("d2-svg") && exported.contains("class=\"katex") && exported.contains("data:font/woff2")
               && exported.contains("hljs-keyword") && exported.contains("data:image/png;base64,"), "")
         check("HTML export has title, contents and alert", exported.contains("<title>Export Test</title>") && exported.contains("<nav class=\"toc\">")
               && exported.contains("markdown-alert-tip") && !exported.contains("class=\"front-matter\""),

@@ -20,7 +20,7 @@ flowchart LR
     end
     Editor --> MD
     MD -->|HTML| Preview
-    WebKit --> Libs{{Mermaid · KaTeX · highlight.js}}
+    WebKit --> Libs{{Mermaid · D2 · Graphviz · KaTeX · highlight.js}}
 ```
 
 ## Live update
@@ -34,6 +34,36 @@ sequenceDiagram
     E->>P: scheduleUpdate() after 0.3 s
     P->>P: quireUpdate(body)
     Note right of P: scroll and diagrams kept
+```
+
+## D2
+
+```d2
+direction: right
+editor: Editor {shape: rectangle}
+core: QuireCore {
+  md: Markdown renderer
+  export: HTML / PDF export
+}
+preview: Preview {
+  web: WKWebView {shape: cylinder}
+}
+editor -> core.md: text
+core.md -> preview.web: HTML
+core.md -> core.export
+```
+
+## Graphviz
+
+```dot
+digraph {
+    rankdir=LR
+    Clean -> Edited [label="type"]
+    Edited -> Saving [label="⌘S"]
+    Saving -> Clean [label="ok"]
+    Saving -> Conflict [label="changed on disk"]
+    Conflict -> Edited [label="keep mine"]
+}
 ```
 
 ## Math

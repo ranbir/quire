@@ -53,6 +53,16 @@ final class MarkdownTests: XCTestCase {
         XCTAssertTrue(html.contains("<div class=\"math math-display\">a &lt; b</div>"), html)
     }
 
+    func testD2AndGraphvizFences() {
+        let html = Markdown.html("```d2\na -> b\n```\n\n```dot\ndigraph { a -> b }\n```\n\n```Graphviz\ngraph { a -- b }\n```\n\n```d2x\nnot a diagram\n```\n")
+        XCTAssertTrue(html.contains("<pre class=\"d2\">a -&gt; b</pre>"), html)
+        XCTAssertTrue(html.contains("<pre class=\"graphviz\">digraph { a -&gt; b }</pre>"), html)
+        XCTAssertTrue(html.contains("<pre class=\"graphviz\">graph { a -- b }</pre>"), html)
+        XCTAssertTrue(html.contains("<code class=\"language-d2x\">"), html)
+        XCTAssertEqual(Markdown.diagramEngine(info: "dot {.wide}"), "graphviz")
+        XCTAssertNil(Markdown.diagramEngine(info: "swift"))
+    }
+
     func testDisplayMathBlocks() {
         let html = Markdown.html("Text\n$$\nx_1 * y_2\n$$\n\n$$ e^{i\\pi} $$\n\n$$ unclosed\n")
         XCTAssertTrue(html.contains("<p>Text</p>\n<div class=\"math math-display\">x_1 * y_2</div>"), html)

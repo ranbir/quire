@@ -1,6 +1,6 @@
 // Quire preview runtime: syntax highlighting (highlight.js), math (KaTeX) and
-// diagrams (Mermaid) for the Markdown/code preview. Mermaid and KaTeX are
-// loaded only when the page needs them. The app calls quireUpdate(html) to
+// diagrams (Mermaid, D2, Graphviz) for the Markdown/code preview. KaTeX and the
+// diagram libraries are loaded only when the page needs them. The app calls quireUpdate(html) to
 // swap in a new body without reloading, so scroll position and rendered
 // diagrams survive typing.
 (function () {
@@ -80,7 +80,15 @@
 
     // MARK: Diagrams
 
-    function mermaidTheme() { return dark.matches ? "dark" : "light"; }
+    // Fenced code blocks drawn as diagrams, by the class Quire gives their <pre>.
+    const engines = {
+        mermaid: { script: "mermaid/mermaid.min.js", render: renderMermaid },
+        d2: { script: "d2/d2.js", render: renderD2 },
+        graphviz: { script: "graphviz/graphviz.js", render: renderGraphviz },
+    };
+    const diagramSelector = Object.keys(engines).map((e) => "pre." + e).join(", ");
+
+    function diagramTheme() { return dark.matches ? "dark" : "light"; }
 
     // Mermaid's "base" theme tuned to the preview's palette.
     const diagramPalettes = {
@@ -91,6 +99,7 @@
             edgeLabelBackground: "#ffffff", noteBkgColor: "#fff8db", noteBorderColor: "#e5c76b", noteTextColor: "#1d1d1f",
             actorBkg: "#eef4ff", actorBorder: "#7aa7e8", actorTextColor: "#1d1d1f", actorLineColor: "#b8bcc4",
             signalColor: "#5a5f68", signalTextColor: "#1d1d1f", labelBoxBkgColor: "#eef4ff", labelBoxBorderColor: "#7aa7e8",
+            rowOdd: "#ffffff", rowEven: "#f6f8fc",
             pie1: "#7aa7e8", pie2: "#a99be6", pie3: "#6fc2a0", pie4: "#f0b86e", pie5: "#e88a8a", pie6: "#86c5e3",
             pieStrokeColor: "#ffffff", pieOuterStrokeColor: "#d8d8dc", pieSectionTextColor: "#1d1d1f", pieTitleTextColor: "#1d1d1f",
         },
@@ -101,6 +110,7 @@
             edgeLabelBackground: "#1e1f22", noteBkgColor: "#3a3420", noteBorderColor: "#8a7636", noteTextColor: "#e6e6e8",
             actorBkg: "#1f2b3d", actorBorder: "#4f7fc4", actorTextColor: "#e6e6e8", actorLineColor: "#4a4c52",
             signalColor: "#a9abb2", signalTextColor: "#e6e6e8", labelBoxBkgColor: "#1f2b3d", labelBoxBorderColor: "#4f7fc4",
+            rowOdd: "#1e1f22", rowEven: "#24262b",
             pie1: "#4f7fc4", pie2: "#7d6cc4", pie3: "#3f9a78", pie4: "#c4893f", pie5: "#c45f5f", pie6: "#4f9cc0",
             pieStrokeColor: "#1e1f22", pieOuterStrokeColor: "#3a3b40", pieSectionTextColor: "#ffffff", pieTitleTextColor: "#e6e6e8",
         },
@@ -111,6 +121,8 @@
             startOnLoad: false,
             securityLevel: "strict",
             theme: "base",
+            look: "neo",
+            layout: "elk",
             themeVariables: Object.assign({
                 fontFamily: "-apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif",
                 fontSize: "14px",
@@ -119,34 +131,106 @@
             sequence: { useMaxWidth: true, mirrorActors: false },
         };
     }
-    // The editor's diagram widgets use the same look.
-    window.quireMermaidConfig = mermaidConfig;
+
+    async function renderMermaid(source, theme, id) {
+        // Mermaid 12 is built for ES2024, which WebKit has from Safari 17.4.
+        if (!Promise.withResolvers) throw new Error("Mermaid diagrams need Safari 17.4 or later. Update macOS or Safari in Software Update.");
+        mermaid.initialize(mermaidConfig(theme));
+        try {
+            return (await mermaid.render(id, source)).svg;
+        } catch (e) {
+            // Mermaid leaves its scratch elements behind when a diagram fails.
+            document.getElementById("d" + id)?.remove();
+            document.getElementById(id)?.remove();
+            throw e;
+        }
+    }
+
+    let d2;
+    async function renderD2(source, theme) {
+        d2 = d2 || new QuireD2();
+        let result;
+        try {
+            result = await d2.compile(source, { layout: "elk", themeID: theme === "dark" ? 200 : 0, pad: 0 });
+        } catch (e) {
+            // Compile errors arrive as a JSON list of { errmsg }.
+            const message = String(e.message || e);
+            let lines;
+            try { lines = JSON.parse(message).map((x) => x.errmsg); } catch (_) { throw e; }
+            throw new Error(lines.join("\n"));
+        }
+        // D2 paints its page background, and the masks behind edge labels, in the theme's N7
+        // colour; use the preview's background instead and drop the page rectangle.
+        const markup = (await d2.render(result.diagram, result.renderOptions))
+            .replace(/(\.fill-N7\{fill:)#[0-9A-Fa-f]{6}/g, "$1" + diagramPalettes[theme].background);
+        const svg = svgElement(markup);
+        svg.querySelector("svg.d2-svg > rect:first-child")?.style.setProperty("fill", "none");
+        sizeFromViewBox(svg);
+        return svg.outerHTML;
+    }
+
+    let graphviz;
+    async function renderGraphviz(source, theme) {
+        graphviz = graphviz || await QuireGraphviz.load();
+        const p = diagramPalettes[theme];
+        const font = "Helvetica Neue";
+        // Defaults placed first in the graph, so the source's own attributes still win.
+        const defaults = `graph [fontname="${font}", fontsize=12, bgcolor="transparent", fontcolor="${p.textColor}", color="${p.clusterBorder}", pad=0.1, nodesep=0.35, ranksep=0.45];
+            node [fontname="${font}", fontsize=12, shape=box, style="rounded,filled", fillcolor="${p.primaryColor}", color="${p.primaryBorderColor}", fontcolor="${p.textColor}"];
+            edge [fontname="${font}", fontsize=11, color="${p.lineColor}", fontcolor="${p.textColor}", arrowsize=0.7];`;
+        const brace = source.indexOf("{");
+        if (brace < 0) throw new Error("A Graphviz diagram starts with graph { … } or digraph { … }.");
+        const svg = graphviz.dot(source.slice(0, brace + 1) + "\n" + defaults + "\n" + source.slice(brace + 1));
+        return svg.slice(svg.indexOf("<svg"));
+    }
+
+    function svgElement(markup) {
+        const t = document.createElement("template");
+        t.innerHTML = markup.replace(/^<\?xml[^>]*>\s*/, "");
+        return t.content.querySelector("svg");
+    }
+
+    // Gives an SVG with only a viewBox a natural size, so it isn't stretched to fill its box.
+    function sizeFromViewBox(svg) {
+        const box = (svg.getAttribute("viewBox") || "").split(/[\s,]+/).map(Number);
+        if (box.length === 4 && !svg.hasAttribute("width")) {
+            svg.setAttribute("width", box[2]);
+            svg.setAttribute("height", box[3]);
+        }
+    }
+
+    // The SVG markup for a diagram, or an error with a readable message.
+    async function renderDiagram(engine, source, theme, id) {
+        const e = engines[engine];
+        if (!e) throw new Error("Unknown diagram type " + engine);
+        await load(e.script);
+        return e.render(source, theme, id);
+    }
+    // The editor's diagram widgets draw with the same code.
+    window.quireRenderDiagram = renderDiagram;
     window.quireLoad = load;
 
     async function renderDiagrams(root, gen) {
-        const blocks = root.querySelectorAll("pre.mermaid");
+        const blocks = root.querySelectorAll(diagramSelector);
         if (!blocks.length) return;
-        try { await load("mermaid/mermaid.min.js"); } catch (e) { return; }
-        const theme = mermaidTheme();
-        mermaid.initialize(mermaidConfig(theme));
+        const theme = diagramTheme();
         for (const pre of blocks) {
             if (gen !== generation) return;   // a newer update replaced the page
+            const engine = Object.keys(engines).find((e) => pre.classList.contains(e));
             const source = pre.textContent;
-            const key = theme + "\u0000" + source;
+            const key = theme + "\u0000" + engine + "\u0000" + source;
             const figure = document.createElement("figure");
             figure.className = "diagram";
+            figure.dataset.engine = engine;
             figure.dataset.source = source;
             if (pre.dataset.sourcepos) figure.dataset.sourcepos = pre.dataset.sourcepos;
             let svg = diagramCache.get(key);
             if (!svg) {
-                const id = "quire-diagram-" + (++diagramSeq);
                 try {
-                    svg = (await mermaid.render(id, source)).svg;
+                    svg = await renderDiagram(engine, source, theme, "quire-diagram-" + (++diagramSeq));
                     if (diagramCache.size > 200) diagramCache.clear();
                     diagramCache.set(key, svg);
                 } catch (e) {
-                    document.getElementById("d" + id)?.remove();
-                    document.getElementById(id)?.remove();
                     figure.classList.add("diagram-error");
                     const msg = document.createElement("div");
                     msg.className = "diagram-error-message";
@@ -166,7 +250,7 @@
     dark.addEventListener("change", () => {
         for (const fig of document.querySelectorAll("figure.diagram")) {
             const pre = document.createElement("pre");
-            pre.className = "mermaid";
+            pre.className = fig.dataset.engine;
             pre.textContent = fig.dataset.source;
             if (fig.dataset.sourcepos) pre.dataset.sourcepos = fig.dataset.sourcepos;
             fig.replaceWith(pre);
