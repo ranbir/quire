@@ -133,8 +133,6 @@
     }
 
     async function renderMermaid(source, theme, id) {
-        // Mermaid 12 is built for ES2024, which WebKit has from Safari 17.4.
-        if (!Promise.withResolvers) throw new Error("Mermaid diagrams need Safari 17.4 or later. Update macOS or Safari in Software Update.");
         mermaid.initialize(mermaidConfig(theme));
         try {
             return (await mermaid.render(id, source)).svg;

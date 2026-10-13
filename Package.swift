@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "Quire",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS("14.4")],
     dependencies: [
         // GitHub's CommonMark + GFM reference parser (gfm branch, pinned)
         .package(url: "https://github.com/apple/swift-cmark", revision: "56146aeeecbfb7ea54504ac6453ac4cbc0faffe7"),

@@ -22,7 +22,7 @@ Quire is a lightweight editor for the three kinds of files most people juggle ev
 
 **Shell worksheets.** A `.worksheet` file runs lines in a persistent zsh session and inserts the output below them, so a document can double as a runnable notebook.
 
-To install, download the latest signed and notarized `.dmg` from [Releases](https://github.com/ranbir/quire/releases), or build it from source as described below. Quire needs macOS 13 or later and runs natively on Apple silicon and Intel. Mermaid diagrams also need Safari 17.4 or later; see [Diagram compatibility](#diagram-compatibility).
+To install, download the latest signed and notarized `.dmg` from [Releases](https://github.com/ranbir/quire/releases), or build it from source as described below. Quire needs macOS 14.4 or later and runs natively on Apple silicon and Intel.
 
 ## Writing Markdown
 
@@ -82,7 +82,7 @@ The preview opens as a pane to the right of the text, in normal windows and in p
 - **GitHub alerts:** a block quote starting with `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` or `[!CAUTION]` on its own line becomes a coloured call-out.
 - **Front matter:** a YAML block between `---` lines at the top of the file is shown as a small table instead of being rendered as text.
 - **Diagrams:** a fenced code block marked `mermaid`, `d2`, or `dot` (or `graphviz`) becomes a diagram.
-  - [Mermaid](https://mermaid.js.org) is the one to use for files that will also be read on GitHub, which draws only Mermaid. Flowcharts, sequence, class, state, entity-relationship, C4 architecture and pie diagrams are supported, laid out with ELK. Mermaid diagrams need Safari 17.4 or later, which macOS 14.4 and later include; on macOS 13, update Safari in Software Update.
+  - [Mermaid](https://mermaid.js.org) is the one to use for files that will also be read on GitHub, which draws only Mermaid. Flowcharts, sequence, class, state, entity-relationship, C4 architecture and pie diagrams are supported, laid out with ELK.
   - [D2](https://d2lang.com) gives the cleanest layouts for architecture and box-and-arrow diagrams, and has `sql_table`, `class` and `sequence_diagram` shapes.
   - [Graphviz](https://graphviz.org) `dot` suits dependency and state graphs. Quire supplies fonts and colours that match the preview; attributes in your own graph override them.
   
@@ -110,7 +110,7 @@ shows a three-box flowchart followed by a sentence with typeset math. The file [
 
 ### Diagram compatibility
 
-- **Safari version.** Quire draws diagrams with macOS's own WebKit, which is updated with Safari. Mermaid needs Safari 17.4 or later: macOS 14.4 and later include it, and on macOS 13 or an earlier macOS 14 you get it by updating Safari in **System Settings ▸ General ▸ Software Update**. With an older Safari, Mermaid blocks show a message asking you to update; D2, Graphviz, math and everything else still work.
+- **Why macOS 14.4.** Quire draws diagrams with macOS's own WebKit. Mermaid 12 needs the WebKit of Safari 17.4, which macOS 14.4 and later include, so that is Quire's minimum.
 - **Open in Browser.** That page runs the diagram libraries in your default browser, so the browser needs to be recent too (Safari 17.4, Chrome 119, Firefox 121 or later).
 - **Exported files** have no such requirement. HTML and PDF exports contain finished SVG drawings and no scripts, so they look the same in any browser or PDF reader.
 - **Other apps and sites.** GitHub, GitLab and most Markdown apps draw only Mermaid; `d2` and `dot` blocks appear there as plain code. They also use their own Mermaid version and colours, so a diagram won't look exactly as it does in Quire, and diagram types newer than their Mermaid version won't draw at all. Use Mermaid for documents that will be read elsewhere, or export them.
@@ -170,7 +170,7 @@ tell application "Quire" to export front document as PDF to POSIX file "/Users/m
 swift test              # runs the QuireCore unit tests
 ```
 
-Requires macOS 13+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
+Requires macOS 14.4+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
 
 ## Features
 
@@ -233,7 +233,7 @@ open -W --stdout /dev/stdout --env QUIRE_SELFTEST=1 -a build/Quire.app   # insid
 - Folding uses heuristics (brackets, indentation, tags) rather than a full parser, except for Markdown headings.
 - Inline math (`$…$`) can't continue across a line break, and `\(…\)` isn't recognised as math.
 - Markdown files over 2 MB use Styled formatting rather than Live Preview, and over 4 MB are shown as Source.
-- Mermaid diagrams need Safari 17.4 or later, and D2 diagrams can't import other files. See [Diagram compatibility](#diagram-compatibility).
+- D2 diagrams can't import other files, and Graphviz can't read image files. See [Diagram compatibility](#diagram-compatibility).
 
 ## License
 
