@@ -6,7 +6,7 @@ import QuireMarkdownC
 /// Options for parsing and rendering Markdown.
 public struct MarkdownOptions: Equatable {
     /// GitHub's extensions (tables, task lists, strikethrough, bare-URL autolinks) and Quire's
-    /// (math, Mermaid, front matter, alerts). Off gives plain CommonMark.
+    /// (math, diagrams, front matter, alerts). Off gives plain CommonMark.
     public var extensions = true
     /// Footnotes (`[^1]`).
     public var footnotes = true
@@ -28,7 +28,7 @@ public struct MarkdownOptions: Equatable {
 }
 
 /// A Markdown document parsed with cmark-gfm (CommonMark + GitHub Flavored Markdown) plus
-/// Quire's extensions: math, Mermaid, front matter, GitHub alerts and heading anchors.
+/// Quire's extensions: math, diagrams (Mermaid, D2, Graphviz), front matter, GitHub alerts and heading anchors.
 /// Positions in the syntax tree are UTF-16 ranges in the original source, ready for NSTextView.
 public final class MarkdownDocument {
     public let source: String
@@ -373,7 +373,7 @@ public final class MarkdownDocument {
 
     static let alertKinds = ["NOTE": "Note", "TIP": "Tip", "IMPORTANT": "Important", "WARNING": "Warning", "CAUTION": "Caution"]
 
-    /// Mermaid and math code blocks, standalone display math, and GitHub alerts.
+    /// Diagram (Mermaid, D2, Graphviz) and math code blocks, standalone display math, and GitHub alerts.
     private func rewriteForHTML(_ root: UnsafeMutablePointer<cmark_node>) {
         var replace: [(UnsafeMutablePointer<cmark_node>, [UnsafeMutablePointer<cmark_node>])] = []
         var alerts: [(UnsafeMutablePointer<cmark_node>, String)] = []
@@ -384,8 +384,8 @@ public final class MarkdownDocument {
                     .split(separator: " ").first.map(String.init)?.lowercased() ?? ""
                 var code = Self.literal(node)
                 if code.hasSuffix("\n") { code.removeLast() }
-                if info == "mermaid" {
-                    replace.append((node, [makeHTMLBlock("<pre class=\"mermaid\"\(Self.sourcepos(node))>\(Markdown.escape(code))</pre>")]))
+                if let engine = Markdown.diagramEngine(info: info) {
+                    replace.append((node, [makeHTMLBlock("<pre class=\"\(engine)\"\(Self.sourcepos(node))>\(Markdown.escape(code))</pre>")]))
                 } else if info == "math" {
                     replace.append((node, [makeHTMLBlock("<div class=\"math math-display\"\(Self.sourcepos(node))>\(Markdown.escape(code))</div>")]))
                 }

@@ -2,14 +2,15 @@ import AppKit
 import WebKit
 import QuireCore
 
-/// Pictures that stand in for Markdown in Live Preview: images, typeset math and Mermaid
-/// diagrams. Rendering is asynchronous and cached; `onReady` fires when new pictures arrive
+/// Pictures that stand in for Markdown in Live Preview: images, typeset math and diagrams
+/// (Mermaid, D2, Graphviz). Rendering is asynchronous and cached; `onReady` fires when new pictures arrive
 /// so the editor can lay them out.
 final class MarkdownWidgets {
     enum Kind: Hashable {
         case image(URL, modified: Date?)
         case math(String, display: Bool)
-        case mermaid(String)
+        /// A diagram engine ("mermaid", "d2", "graphviz") and its source.
+        case diagram(String, String)
     }
 
     struct Key: Hashable {
@@ -49,7 +50,7 @@ final class MarkdownWidgets {
         switch kind {
         case .image(let url, _): Self.loadImage(url) { done($0, nil) }
         case .math(let tex, let display): WidgetWebRenderer.shared.render(.init(kind: "math", source: tex, display: display, dark: dark, fontSize: fontSize), done)
-        case .mermaid(let source): WidgetWebRenderer.shared.render(.init(kind: "mermaid", source: source, display: true, dark: dark, fontSize: fontSize), done)
+        case .diagram(let engine, let source): WidgetWebRenderer.shared.render(.init(kind: engine, source: source, display: true, dark: dark, fontSize: fontSize), done)
         }
         return nil
     }
@@ -81,7 +82,7 @@ final class MarkdownWidgets {
     }
 }
 
-/// Renders math (KaTeX) and diagrams (Mermaid) with the preview's libraries in an off-screen
+/// Renders math (KaTeX) and diagrams (Mermaid, D2, Graphviz) with the preview's libraries in an off-screen
 /// web view, one job at a time, and snapshots the result with a transparent background.
 final class WidgetWebRenderer: NSObject, WKNavigationDelegate {
     static let shared = WidgetWebRenderer()
@@ -133,12 +134,16 @@ final class WidgetWebRenderer: NSObject, WKNavigationDelegate {
                     await quireLoad("katex/katex.min.js");
                     w.innerHTML = katex.renderToString(source, { displayMode: display, throwOnError: false });
                 } else {
-                    await quireLoad("mermaid/mermaid.min.js");
-                    mermaid.initialize(quireMermaidConfig(dark ? "dark" : "light"));
-                    const out = await mermaid.render("quire-widget-" + Date.now(), source);
-                    w.innerHTML = out.svg;
+                    w.innerHTML = await quireRenderDiagram(kind, source, dark ? "dark" : "light", "quire-widget-" + Date.now());
+                    // Draw at the diagram's own size: a "100%" width in this shrink-to-fit box
+                    // would fall back to 300px and squash wide diagrams.
                     const svg = w.querySelector("svg");
-                    if (svg) { svg.style.maxWidth = "900px"; svg.removeAttribute("height"); }
+                    if (svg) {
+                        const box = svg.viewBox.baseVal;
+                        if (box && box.width > 0) svg.setAttribute("width", Math.min(box.width, 900));
+                        svg.style.maxWidth = "900px";
+                        svg.removeAttribute("height");
+                    }
                 }
                 // A zero-size inline-block's bottom edge sits on the baseline.
                 const probe = document.createElement("span");

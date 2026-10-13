@@ -8,6 +8,19 @@ public enum Markdown {
         MarkdownDocument(TextCodec.normalizeLineEndings(source), options: options).html()
     }
 
+    // MARK: Diagrams
+
+    /// The diagram engine for a fenced code block's info string ("mermaid", "d2" or
+    /// "graphviz"), or nil when the block is ordinary code.
+    public static func diagramEngine(info: String) -> String? {
+        switch info.split(separator: " ").first?.lowercased() ?? "" {
+        case "mermaid": return "mermaid"
+        case "d2": return "d2"
+        case "dot", "graphviz": return "graphviz"
+        default: return nil
+        }
+    }
+
     // MARK: Escaping
 
     public static func escape(_ s: String) -> String {

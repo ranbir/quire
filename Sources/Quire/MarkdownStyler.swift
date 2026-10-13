@@ -335,7 +335,7 @@ final class MarkdownStyler {
             switch s.kind {
             case .codeBlock(let info):
                 let lang = info.split(separator: " ").first.map { $0.lowercased() } ?? ""
-                if live, lang == "math" || lang == "mermaid" { return nil }
+                if live, lang == "math" || Markdown.diagramEngine(info: lang) != nil { return nil }
                 return InvisiblesLayoutManager.MarkdownBlock(range: s.range, kind: .code)
             case .blockQuote where live:
                 let depth = quotes.filter { NSLocationInRange(s.range.location, $0) }.count
@@ -409,7 +409,7 @@ final class MarkdownStyler {
         fm.setMarkup(markup, changed: changed)
     }
 
-    /// Images, math and Mermaid diagrams outside the active blocks, drawn as pictures once
+    /// Images, math and diagrams outside the active blocks, drawn as pictures once
     /// they have rendered.
     private func widgetMarkup(ns: NSString, touches: (NSRange) -> Bool) -> [FoldManager.Markup] {
         guard let tv = textView else { return [] }
@@ -431,14 +431,15 @@ final class MarkdownStyler {
             switch s.kind {
             case .codeBlock(let info):
                 let lang = info.split(separator: " ").first.map { $0.lowercased() } ?? ""
-                guard lang == "math" || lang == "mermaid" else { continue }
+                let engine = Markdown.diagramEngine(info: lang)
+                guard lang == "math" || engine != nil else { continue }
                 var lines = ns.substring(with: s.range).components(separatedBy: "\n")
                 guard lines.count >= 2 else { continue }
                 lines.removeFirst()
                 if let last = lines.last?.trimmingCharacters(in: .whitespaces), last.hasPrefix("```") || last.hasPrefix("~~~") || last == "$$" { lines.removeLast() }
                 let source = lines.joined(separator: "\n")
                 guard !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
-                add(s, lang == "math" ? .math(source, display: true) : .mermaid(source), block: true, maxHeight: 900)
+                add(s, engine.map { .diagram($0, source) } ?? .math(source, display: true), block: true, maxHeight: 900)
             case .math(let display):
                 let d = display ? 2 : 1
                 guard s.range.length > 2 * d else { continue }

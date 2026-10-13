@@ -10,11 +10,11 @@ Quire is a lightweight editor for the three kinds of files most people juggle ev
 
 **Working with text.** A large Text menu sorts, de-duplicates, wraps, re-cases and cleans up lines. Find and replace supports grep patterns with back-references and can search a whole folder. Any script in the Text Filters folder becomes a menu command that transforms the selection.
 
-**Writing Markdown.** Markdown files are formatted as you type: headings are larger, bold is bold, and the `**`, `#` and link syntax fade away except in the paragraph you're editing. Math, Mermaid diagrams and images appear in place. Lists continue when you press Return, tables line up when you press Tab, and the file on disk stays plain Markdown. Markdown is parsed with GitHub's own parser, passing all 670 examples of the GitHub Flavored Markdown spec. See [Writing Markdown](#writing-markdown) below.
+**Writing Markdown.** Markdown files are formatted as you type: headings are larger, bold is bold, and the `**`, `#` and link syntax fade away except in the paragraph you're editing. Math, diagrams (Mermaid, D2 and Graphviz) and images appear in place. Lists continue when you press Return, tables line up when you press Tab, and the file on disk stays plain Markdown. Markdown is parsed with GitHub's own parser, passing all 670 examples of the GitHub Flavored Markdown spec. See [Writing Markdown](#writing-markdown) below.
 
 **Exporting.** Save Markdown as a self-contained HTML page or a paginated PDF, or copy it as rich text to paste into Mail or Docs. See [Exporting Markdown as HTML or PDF](#exporting-markdown-as-html-or-pdf).
 
-**Reading Markdown.** Click the eye icon in the status bar (or press `⌥⌘P`) to open a live preview pane beside the editor. It renders Mermaid diagrams (flowcharts, sequence, class, state, ER and C4 architecture diagrams), KaTeX math and syntax-highlighted code, and updates in place as you type. Everything is bundled, so it works offline. See [Previewing Markdown, HTML and code](#previewing-markdown-html-and-code) below.
+**Reading Markdown.** Click the eye icon in the status bar (or press `⌥⌘P`) to open a live preview pane beside the editor. It renders diagrams written in Mermaid, D2 or Graphviz, KaTeX math and syntax-highlighted code, and updates in place as you type. Everything is bundled, so it works offline. See [Previewing Markdown, HTML and code](#previewing-markdown-html-and-code) below.
 
 **Projects and remote files.** Open a folder as a project with a sidebar of files and open documents, save it as a `.quireproject`, or edit files on a server over SFTP using your existing `ssh` setup.
 
@@ -22,7 +22,7 @@ Quire is a lightweight editor for the three kinds of files most people juggle ev
 
 **Shell worksheets.** A `.worksheet` file runs lines in a persistent zsh session and inserts the output below them, so a document can double as a runnable notebook.
 
-To install, download the latest signed and notarized `.dmg` from [Releases](https://github.com/ranbir/quire/releases), or build it from source as described below. Quire needs macOS 13 or later and runs natively on Apple silicon and Intel.
+To install, download the latest signed and notarized `.dmg` from [Releases](https://github.com/ranbir/quire/releases), or build it from source as described below. Quire needs macOS 14.4 or later and runs natively on Apple silicon and Intel.
 
 ## Writing Markdown
 
@@ -30,7 +30,7 @@ Markdown files have three ways to show their text. Pick one from the menu in the
 
 | Mode | What you see |
 |---|---|
-| **Live Preview** (default) | Formatted text. Markers such as `**`, `#`, `>` and link URLs are hidden except in the paragraph holding the cursor, where they reappear so you can edit them. List markers show as bullets, task boxes are real checkboxes (click to tick), rules are lines, quotes get a bar (coloured, with a coloured label, for GitHub alerts like `> [!NOTE]`), and math, Mermaid diagrams and images are drawn in place |
+| **Live Preview** (default) | Formatted text. Markers such as `**`, `#`, `>` and link URLs are hidden except in the paragraph holding the cursor, where they reappear so you can edit them. List markers show as bullets, task boxes are real checkboxes (click to tick), rules are lines, quotes get a bar (coloured, with a coloured label, for GitHub alerts like `> [!NOTE]`), and math, diagrams and images are drawn in place |
 | **Styled** | The same formatting, with every marker visible but dimmed |
 | **Source** | Plain text with syntax colouring |
 
@@ -81,7 +81,12 @@ The preview opens as a pane to the right of the text, in normal windows and in p
 - **Markdown** is rendered as a formatted page with [cmark-gfm](https://github.com/github/cmark-gfm), the parser GitHub uses. It passes all 670 examples of the GitHub Flavored Markdown spec: headings, lists, task lists, tables, strikethrough, links and bare URLs, images (paths relative to the file work), block quotes, footnotes and raw HTML. Headings get GitHub-style anchors, so `[see setup](#setup)` links work.
 - **GitHub alerts:** a block quote starting with `[!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]` or `[!CAUTION]` on its own line becomes a coloured call-out.
 - **Front matter:** a YAML block between `---` lines at the top of the file is shown as a small table instead of being rendered as text.
-- **Diagrams:** a fenced code block marked `mermaid` becomes a diagram. Flowcharts, sequence, class, state, entity-relationship, C4 architecture and pie diagrams are supported. If a diagram has a mistake, the preview shows the error above its source instead of a blank space.
+- **Diagrams:** a fenced code block marked `mermaid`, `d2`, or `dot` (or `graphviz`) becomes a diagram.
+  - [Mermaid](https://mermaid.js.org) is the one to use for files that will also be read on GitHub, which draws only Mermaid. Flowcharts, sequence, class, state, entity-relationship, C4 architecture and pie diagrams are supported, laid out with ELK.
+  - [D2](https://d2lang.com) gives the cleanest layouts for architecture and box-and-arrow diagrams, and has `sql_table`, `class` and `sequence_diagram` shapes.
+  - [Graphviz](https://graphviz.org) `dot` suits dependency and state graphs. Quire supplies fonts and colours that match the preview; attributes in your own graph override them.
+  
+  If a diagram has a mistake, the preview shows the error above its source instead of a blank space.
 - **Math:** `$…$` inside a sentence, and `$$…$$` or a fenced `math` block on its own lines, are typeset with KaTeX. Prices such as "$5 and $10" are left alone, and inline math doesn't continue across a line break or into a code span.
 - **Code blocks** are syntax-highlighted, labelled with their language, and get a **Copy** button when you hover over them.
 - **HTML files** are shown as a browser would show them, with relative links, images and stylesheets resolved from the file's folder.
@@ -102,6 +107,24 @@ The area of a circle is $\pi r^2$.
 ````
 
 shows a three-box flowchart followed by a sentence with typeset math. The file [`docs/preview-sample.md`](docs/preview-sample.md) has a fuller example.
+
+### Diagram compatibility
+
+- **Why macOS 14.4.** Quire draws diagrams with macOS's own WebKit. Mermaid 12 needs the WebKit of Safari 17.4, which macOS 14.4 and later include, so that is Quire's minimum.
+- **Open in Browser.** That page runs the diagram libraries in your default browser, so the browser needs to be recent too (Safari 17.4, Chrome 119, Firefox 121 or later).
+- **Exported files** have no such requirement. HTML and PDF exports contain finished SVG drawings and no scripts, so they look the same in any browser or PDF reader.
+- **Other apps and sites.** GitHub, GitLab and most Markdown apps draw only Mermaid; `d2` and `dot` blocks appear there as plain code. They also use their own Mermaid version and colours, so a diagram won't look exactly as it does in Quire, and diagram types newer than their Mermaid version won't draw at all. Use Mermaid for documents that will be read elsewhere, or export them.
+- **Mermaid layouts changed in this version.** Mermaid 12 lays out flowcharts, state, class and ER diagrams with ELK instead of dagre, so existing diagrams are rearranged (usually more tidily). To keep the old layout for one diagram, start it with:
+
+  ```
+  ---
+  config:
+    layout: dagre
+  ---
+  ```
+
+- **D2** runs Terrastruct's open-source engine with the ELK layout. TALA, D2's commercial layout engine, isn't included, and imports of other `.d2` files don't work because each diagram is drawn on its own. The bundled engine can trail the latest `d2` command-line release by a few versions.
+- **Graphviz** can't read files, so attributes that point to images or other files (such as `image` and `shapefile`) are ignored.
 
 ### View the page as HTML in your browser
 
@@ -147,7 +170,7 @@ tell application "Quire" to export front document as PDF to POSIX file "/Users/m
 swift test              # runs the QuireCore unit tests
 ```
 
-Requires macOS 13+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
+Requires macOS 14.4+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
 
 ## Features
 
@@ -168,7 +191,7 @@ Requires macOS 13+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
 | Code folding | Fold triangles in the gutter for braces, indentation (Python, YAML), Markdown headings and HTML/XML elements; **View ▸ Folding** folds the selection, collapses the enclosing block, or collapses/expands all. Folded text shows as a clickable `⋯`, and folds follow edits |
 | Completion | `⌥⎋` completes from the document's words and the language's keywords; optional **Auto-Complete as You Type** |
 | Clippings | **Clippings** menu with per-language and Universal snippets from `~/Library/Application Support/Quire/Clippings`. Tokens: `#SELECTION#`, `#INSERTION#`, `#CLIPBOARD#`, `#DATE#`, `#TIME#`, `#FILENAME#`, `#BASENAME#`, and `<#placeholders#>` (`⌃/` jumps to the next one). Inserted clippings match the current indentation |
-| Live preview | Click the eye icon in the status bar or press `⌥⌘P` for a live preview pane beside the text: Markdown with Mermaid diagrams, KaTeX math and highlighted code; HTML pages; and highlighted code files. **Open in Browser** (the compass icon in the pane) shows the page in your browser. See [Previewing Markdown, HTML and code](#previewing-markdown-html-and-code) |
+| Live preview | Click the eye icon in the status bar or press `⌥⌘P` for a live preview pane beside the text: Markdown with Mermaid, D2 and Graphviz diagrams, KaTeX math and highlighted code; HTML pages; and highlighted code files. **Open in Browser** (the compass icon in the pane) shows the page in your browser. See [Previewing Markdown, HTML and code](#previewing-markdown-html-and-code) |
 | Shell worksheets | **File ▸ New Shell Worksheet** (or any `.worksheet` file). `⌘↩` runs the current line or selection in a persistent zsh (directory and variables carry over) and inserts the output below; `⌘.` stops it |
 | Git | Gutter bars for added/modified/deleted lines vs `HEAD`, branch in the status bar, and a **Git** menu: Compare with HEAD, Blame, File History, Repository Status/Diff, Stage, Unstage, Discard Changes, Commit |
 | SFTP / SSH | **File ▸ Open from SFTP Server** (`⌃⌘O`) browses a host over `ssh` (keys, agent, `~/.ssh/config`); files are edited locally and uploaded on every save (atomic, keeps permissions). Password and host-key prompts appear as Quire dialogs (Quire acts as its own `SSH_ASKPASS`); passwords are never stored |
@@ -184,10 +207,11 @@ Requires macOS 13+ and the Swift 5.10+ toolchain (Xcode or Command Line Tools).
 Sources/QuireCore/   pure logic, unit-tested: codec, transforms, search, diff, tokenizer, languages, markdown, folding, git, shell, ssh, modules, AI providers
 Sources/QuireMarkdownC/  cmark-gfm syntax extension for $math$
 Sources/Quire/       AppKit app: documents, editor, projects, folding, preview, Git, SFTP, scripting
-Resources/preview/   preview runtime (quire-preview.js/.css) and bundled Mermaid, KaTeX, highlight.js
+Resources/preview/   preview runtime (quire-preview.js/.css) and bundled Mermaid, D2, Graphviz, KaTeX, highlight.js
 Tests/               XCTest suite for QuireCore, including the CommonMark and GFM spec examples
 bin/quire            command-line launcher
 tools/make-icon.swift  generates the app icon
+tools/vendor-diagrams.sh  refreshes the bundled Mermaid, D2 and Graphviz
 ```
 
 Syntax colouring is applied as layout-manager temporary attributes from a
@@ -209,9 +233,10 @@ open -W --stdout /dev/stdout --env QUIRE_SELFTEST=1 -a build/Quire.app   # insid
 - Folding uses heuristics (brackets, indentation, tags) rather than a full parser, except for Markdown headings.
 - Inline math (`$…$`) can't continue across a line break, and `\(…\)` isn't recognised as math.
 - Markdown files over 2 MB use Styled formatting rather than Live Preview, and over 4 MB are shown as Source.
+- D2 diagrams can't import other files, and Graphviz can't read image files. See [Diagram compatibility](#diagram-compatibility).
 
 ## License
 
 Quire is released under the [MIT License](LICENSE). Copyright (c) 2026 Ranbir Mazumdar.
 
-It bundles cmark-gfm (BSD 2-Clause), KaTeX (MIT), Mermaid (MIT) and highlight.js (BSD 3-Clause). Their license texts are in [`Resources/Licenses`](Resources/Licenses) and [`Resources/preview`](Resources/preview), and are included inside Quire.app.
+It bundles cmark-gfm (BSD 2-Clause), KaTeX (MIT), Mermaid (MIT), D2 (MPL 2.0), Graphviz (EPL 2.0) with @hpcc-js/wasm (Apache 2.0), ELK (EPL 2.0) and highlight.js (BSD 3-Clause). Their license texts are in [`Resources/Licenses`](Resources/Licenses) and [`Resources/preview`](Resources/preview), and are included inside Quire.app.
