@@ -43,6 +43,7 @@ final class MarkdownExporter: NSObject, WKNavigationDelegate {
         window = NSWindow(contentRect: NSRect(x: -30000, y: -30000, width: 820, height: 1100),
                           styleMask: [.borderless], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false
+        window.makeOffscreenHelper()
         window.contentView = webView
         let dir = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("Quire/Export")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -82,6 +82,19 @@ final class MarkdownWidgets {
     }
 }
 
+extension NSWindow {
+    /// Hides a window that only exists so WebKit will lay out and draw from Mission Control,
+    /// window cycling and the Window menu. Without this, Mission Control
+    /// animates the off-screen window in from the corner as a "ghost".
+    func makeOffscreenHelper() {
+        collectionBehavior = [.transient, .ignoresCycle, .fullScreenNone]
+        isExcludedFromWindowsMenu = true
+        hasShadow = false
+        ignoresMouseEvents = true
+        animationBehavior = .none
+    }
+}
+
 /// Renders math (KaTeX) and diagrams (Mermaid, D2, Graphviz) with the preview's libraries in an off-screen
 /// web view, one job at a time, and snapshots the result with a transparent background.
 final class WidgetWebRenderer: NSObject, WKNavigationDelegate {
@@ -109,6 +122,7 @@ final class WidgetWebRenderer: NSObject, WKNavigationDelegate {
         web.navigationDelegate = self
         let win = NSWindow(contentRect: NSRect(x: -40000, y: -40000, width: 1400, height: 1400), styleMask: [.borderless], backing: .buffered, defer: false)
         win.isReleasedWhenClosed = false
+        win.makeOffscreenHelper()
         win.contentView = web
         win.orderFront(nil)
         window = win
